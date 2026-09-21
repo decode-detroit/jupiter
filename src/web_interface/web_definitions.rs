@@ -72,7 +72,7 @@ impl TryFrom<CreatePlayer> for Request {
     // Required method
     fn try_from(create_player: CreatePlayer) -> Result<Self, Self::Error> {
         // Try to create the ids from the provided data
-        let player_id = PlayerId::new(&start_puzzle.player_id).ok_or("Player ID is not valid.")?;
+        let player_id = PlayerId::new(&create_player.player_id).ok_or("Player ID is not valid.")?;
 
         // Return the completed request
         Ok(Request::CreatePlayer { player_id })
@@ -85,8 +85,8 @@ impl TryFrom<StartPuzzle> for Request {
     fn try_from(start_puzzle: StartPuzzle) -> Result<Self, Self::Error> {
         // Try to create the ids from the provided data
         let player_id = PlayerId::new(&start_puzzle.player_id).ok_or("Player ID is not valid.")?;
-        let game_id = GameId::new(&start_puzzle.game_id).ok_or("Player ID is not valid.")?;
-        let puzzle_id = PuzzleId::new(start_puzzle.puzzle_id).ok_or("Player ID is not valid.")?;
+        let game_id = GameId::new(&start_puzzle.game_id).ok_or("Game ID is not valid.")?;
+        let puzzle_id = PuzzleId::new(start_puzzle.puzzle_id).ok_or("Puzzle ID is not valid.")?;
 
         // Return the completed request
         Ok(Request::StartPuzzle { player_id, game_id, puzzle_id })

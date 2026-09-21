@@ -24,6 +24,9 @@ use crate::definitions::*;
 // Import Tokio features
 use tokio::sync::{mpsc, oneshot};
 
+// Import warp features
+use warp::ws::Message;
+
 /// The stucture and methods to send updates to the player(s).
 ///
 #[derive(Clone, Debug)]
@@ -92,6 +95,19 @@ pub enum Update {
     /// A variant indicating that the event timeline should be updated.
     #[serde(rename_all = "camelCase")]
     UpdateTimeline { events: Vec<UpcomingEvent> },
+}
+
+// Implement from<Update> for Message)
+impl From<Update> for Result<Message, warp::Error> {
+    fn from(update: Update) -> Self {
+        // Try to serialize the update
+        match serde_json::to_string(&update) {
+            Ok(string) => Ok(Message::text(string)),
+
+            // On failure, return an empty string (unable to convert the error)
+            _ => Ok(Message::text("")),
+        }
+    }
 }
 
 /// The stucture and methods to send requests to jupiter

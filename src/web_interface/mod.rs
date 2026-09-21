@@ -380,21 +380,10 @@ impl WebInterface {
         jupiter_send: JupiterSend,
         token: String,
     ) -> Result<impl warp::Reply, warp::Rejection> {
-        // Create the validation requirements for the admin token
-        let mut validation = Validation::default();
-        validation.set_issuer(&["Jupiter-Admin"]);
-        validation.validate_exp = false; // generator token doesn't expire
-        match jwt::decode::<AuthClaims>(&token, &key, &validation) {
-            // Return the decoded data
-            Ok(_) => (),
-
-            // Return an authentication error
-            _ => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("User is not authorized.")),
-                    http::StatusCode::FORBIDDEN,
-                ));
-            }
+        // Validate the token
+        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, "Jupiter-Admin", &key) {
+            // Return early on failure
+            return Ok(reply);
         };
 
         // Send the shutdown message and wait for the reply
@@ -435,25 +424,9 @@ impl WebInterface {
         jupiter_send: JupiterSend,
         token: String,
     ) -> Result<impl warp::Reply, warp::Rejection> {
-        /*// Create the validation requirements for the admin token
-        let mut validation = Validation::default();
-        validation.set_issuer(&["Jupiter-Admin"]);
-        validation.validate_exp = false; // generator token doesn't expire
-        match jwt::decode::<AuthClaims>(&token, &key, &validation) {
-            // Return the decoded data
-            Ok(_) => (),
-
-            // Return an authentication error
-            _ => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("User is not authorized.")),
-                    http::StatusCode::FORBIDDEN,
-                ));
-            }
-        };*/
-
         // Validate the token
         if let Err(reply) = WebInterface::validate::<AuthClaims>(token, "Jupiter-Admin", &key) {
+            // Return early on failure
             return Ok(reply);
         };
 
@@ -497,31 +470,17 @@ impl WebInterface {
         token: String,
         possible_request: CreatePlayer,
     ) -> Result<impl warp::Reply, warp::Rejection> {
-        // Create the validation requirements for the admin token
-        let mut validation = Validation::default();
-        validation.set_issuer(&["Jupiter-Admin"]);
-        validation.validate_exp = false; // generator token doesn't expire
-        match jwt::decode::<AuthClaims>(&token, &decoding_key, &validation) {
-            // Return the decoded data
-            Ok(_) => (),
-
-            // Return an authentication error
-            _ => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("User is not authorized.")),
-                    http::StatusCode::FORBIDDEN,
-                ));
-            }
+        // Validate the token
+        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, "Jupiter-Admin", &decoding_key) {
+            // Return early on failure
+            return Ok(reply);
         };
-
-        // Create the timestamp for the expiration of the new token
-        let exp = jwt::get_current_timestamp() + TOKEN_DURATION;
-
-        // Compose the claims for the token
+        
+        // Compose the claims for the new token
         let claims = PlayerClaims {
             iss: "Jupiter".into(),
             plyr: possible_request.player_id.clone(),
-            exp,
+            exp: jwt::get_current_timestamp() + TOKEN_DURATION,
         };
 
         // Try to create the new player request
@@ -583,20 +542,13 @@ impl WebInterface {
         token: String,
         possible_request: StartPuzzle,
     ) -> Result<impl warp::Reply, warp::Rejection> {
-        // Create the validation requirements for the token
-        let mut validation = Validation::default();
-        validation.set_issuer(&["Jupiter"]);
-        let token_data = match jwt::decode::<PlayerClaims>(&token, &key, &validation) {
-            // Return the decoded data
+        // Validate the token
+        let token_data = match WebInterface::validate::<PlayerClaims>(token, "Jupiter", &key) {
+            // Return the data on success
             Ok(data) => data,
 
-            // Return an authentication error
-            _ => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("Authorization token is invalid.")),
-                    http::StatusCode::FORBIDDEN,
-                ));
-            }
+            // Return early on failure
+            Err(reply) => return Ok(reply),
         };
 
         // Create a player id from the token string
@@ -640,14 +592,6 @@ impl WebInterface {
             }
         };
 
-        // Check that the token matches the provided id
-        if player_id != token_id {
-            return Ok(warp::reply::with_status(
-                warp::reply::json(&Reply::failure("Provided authorization does not match Player ID.")),
-                http::StatusCode::FORBIDDEN,
-            ));
-        }
-
         // Send the message and wait for the reply
         let (reply_to, rx) = oneshot::channel();
         jupiter_send.send(reply_to, request).await;
@@ -686,14 +630,12 @@ impl WebInterface {
         token: String,
         socket: WebSocket,
     ) {
-        // Create the validation requirements for the token
-        let mut validation = Validation::default();
-        validation.set_issuer(&["Jupiter"]);
-        let token_data = match jwt::decode::<PlayerClaims>(&token, &key, &validation) {
-            // Return the decoded data
+        // Validate the token
+        let token_data = match WebInterface::validate::<PlayerClaims>(token, "Jupiter", &key) {
+            // Return the data on success
             Ok(data) => data,
 
-            // Return without connecting the socket
+            // Return early on failure without connecting the socket
             _ => return,
         };
 

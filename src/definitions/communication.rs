@@ -98,7 +98,7 @@ pub enum Update {
 ///
 #[derive(Clone, Debug)]
 pub struct JupiterSend {
-    web_send: mpsc::Sender<WebRequest>, // the mpsc sending line to pass web requests
+    web_send: mpsc::Sender<WebRequest>, // the mpsc sending line to pass player requests
 }
 
 // Implement the key features of the web send struct
@@ -118,7 +118,7 @@ impl JupiterSend {
 
     /// A method to send a web request. This method fails silently.
     ///
-    pub async fn send(&self, reply_to: oneshot::Sender<WebReply>, request: Request) {
+    pub async fn send(&self, reply_to: oneshot::Sender<Reply>, request: Request) {
         self.web_send
             .send(WebRequest { reply_to, request })
             .await
@@ -126,16 +126,17 @@ impl JupiterSend {
     }
 }
 
-/// A structure for carrying requests from the player
+/// A structure for carrying requests from the web interface
 ///
-pub struct PlayerRequest {
+pub struct WebRequest {
     pub reply_to: oneshot::Sender<Reply>, // the handle for replying to the reqeust
     pub request: Request,                 // the request
 }
 
-/// An enum to carry requests from the user
+/// An enum to carry requests from the player(s)
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub enum Request {
     /// A special variant to close the program.
     Close,
@@ -144,10 +145,7 @@ pub enum Request {
     CreatePlayer { player_id: PlayerId },
 
     /// A variant to cue an event for a particular puzzle
-    CueEvent { event_id:  },
-
-    /// A variant to request the current player id for a given game and puzzle
-    CurrentPlayer { game_id: GameId, puzzle_id: PuzzleId },
+    CueEvent { event_id: ItemId },
 
     /// A variant to get the status of a player
     PlayerStatus { player_id: PlayerId },
@@ -157,6 +155,12 @@ pub enum Request {
 
     /// A variant to request to start a puzzle
     StartPuzzle { player_id: PlayerId, game_id: GameId, puzzle_id: PuzzleId },
+
+    /// A variant to check if a player id exists
+    VerifyPlayer { player_id: PlayerId },
+
+    /// A variant to verify this player id for a given game and puzzle
+    VerifyCurrentPlayer { player_id: PlayerId, game_id: GameId, puzzle_id: PuzzleId },
 }
 
 /// A struct to cover all replies
@@ -194,7 +198,7 @@ impl Reply {
 
     /// A function to return a new, failed web reply
     ///
-    pub fn failure<S>(reason: S) -> WebReply
+    pub fn failure<S>(reason: S) -> Reply
     where
         S: Into<String>,
     {

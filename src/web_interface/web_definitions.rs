@@ -21,25 +21,26 @@
 // Import crate definitions
 use crate::definitions::*;
 
-// Import standard library features
-use std::num::ParseIntError;
-use std::path::PathBuf;
-use std::str::FromStr;
-use std::time::Duration;
-
-// Import Chrono features
-use chrono::NaiveDateTime;
-
 // Import Tokio and warp features
 use tokio::sync::mpsc;
 use warp::ws::Message;
 
-/// Helper struct to define JWT claims
+/// Helper struct to define JWT claims for authorized users
 ///
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct Claims {
+pub struct AuthClaims {
     pub iss: String,
+    pub exp: u64,
+}
+
+/// Helper struct to define JWT claims for a player token
+///
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct PlayerClaims {
+    pub iss: String,
+    pub plyr: String,
     pub exp: u64,
 }
 
@@ -50,137 +51,44 @@ pub struct ListenerWithExpiration {
     pub expiration: u64, // the expiration time of the websocket, in UNIX Epoch seconds. 0 for no expiration
 }
 
-/// Helper data types to formalize request structure
-///
+/// Helper types and structs for passing requests to Jupiter
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct AllEventChange {
-    adjustment_secs: u64,
-    adjustment_nanos: u64,
-    is_negative: bool,
+pub struct CreatePlayer {
+    pub player_id: String,
 }
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct ConfigFile {
-    filename: Option<String>,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct LimitedCueEvent {
-    id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct FullCueEvent {
-    id: u32,
-    secs: u64,
-    nanos: u64,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct DebugMode {
-    is_debug: bool,
-}
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct Edit {
-    modifications: Vec<Modification>,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct ErrorLog {
-    filename: String,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct EventChange {
-    event_id: ItemId,
-    start_time: NaiveDateTime,
-    new_delay: Option<Duration>,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct GameLog {
-    filename: String,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetEvent {
-    id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetItem {
-    pub id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetGroup {
-    id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetScene {
-    id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetStatus {
-    id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct GetType {
-    id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-#[allow(dead_code)]
-pub struct ProcessEvent {
-    event_id: u32,
-    check_scene: bool,
-    broadcast: bool,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SaveConfig {
-    filename: String,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SaveStyles {
-    pub new_styles: StyleMap,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct SceneChange {
-    scene_id: u32,
-}
-#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct StatusChange {
-    status_id: u32,
-    state_id: u32,
+pub struct StartPuzzle {
+    pub player_id: String,
+    pub game_id: String,
+    pub puzzle_id: u32,
 }
 
-impl FromStr for CueEvent {
-    // Interpret errors as ParseIntError
-    type Err = ParseIntError;
+// Implement attempted conversions into a request
+impl TryFrom<CreatePlayer> for Request {
+    type Error = &'static str;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Parse as a u32 and return the result
-        let id = s.parse::<u32>()?;
-        Ok(CueEvent { id })
+    // Required method
+    fn try_from(create_player: CreatePlayer) -> Result<Self, Self::Error> {
+        // Try to create the ids from the provided data
+        let player_id = PlayerId::new(&start_puzzle.player_id).ok_or("Player ID is not valid.")?;
+
+        // Return the completed request
+        Ok(Request::CreatePlayer { player_id })
     }
 }
-impl From<CueEvent> for Request {
-    fn from(cue_event: CueEvent) -> Self {
-        // Return the request
-        Request::CueEvent {
-            event_delay: EventDelay::new(None, ItemId::new_unchecked(cue_event.id)),
-        }
+impl TryFrom<StartPuzzle> for Request {
+    type Error = &'static str;
+
+    // Required method
+    fn try_from(start_puzzle: StartPuzzle) -> Result<Self, Self::Error> {
+        // Try to create the ids from the provided data
+        let player_id = PlayerId::new(&start_puzzle.player_id).ok_or("Player ID is not valid.")?;
+        let game_id = GameId::new(&start_puzzle.game_id).ok_or("Player ID is not valid.")?;
+        let puzzle_id = PuzzleId::new(start_puzzle.puzzle_id).ok_or("Player ID is not valid.")?;
+
+        // Return the completed request
+        Ok(Request::StartPuzzle { player_id, game_id, puzzle_id })
     }
 }

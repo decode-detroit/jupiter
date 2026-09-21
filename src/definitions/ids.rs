@@ -24,8 +24,6 @@ use crate::definitions::*;
 
 // Import standard library modules
 use std::fmt;
-use std::str::FromStr;
-use std::char::ParseCharError;
 
 // Import Serde macros
 use serde::{Deserialize, Serialize};
@@ -39,7 +37,7 @@ const ALL_STOP: u32 = 0;
 pub type PuzzleId = ItemId;
 
 /// A structure to hold a game id. This id is constrained to (approximately)
-/// 10 lowercase characters.
+/// between 4 and 10 lowercase characters
 /// 
 #[derive(Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Debug, Serialize, Deserialize)]
 pub struct GameId {
@@ -51,22 +49,28 @@ impl GameId {
     /// A function to create a new game id from a str.
     /// 
     /// This function will automatically trucate the string
-    /// to (approximately) 10 characters and convert the to lowercase.
+    /// to (approximately) 10 characters and convert the to uppercase.
     /// 
-    pub fn new(unchecked_id: &str) -> GameId {
+    /// # Errors
+    /// 
+    /// This function will return None if the string is shorter than 4 characters.
+    /// 
+    pub fn new(unchecked_id: &str) -> Option<GameId> {
         // Truncate the string to the closest char boundary and convert to lowercase
-        GameId { id: unchecked_id[..unchecked_id.floor_char_boundary(10)].to_lowercase().clone() }
+        let id = unchecked_id[..unchecked_id.floor_char_boundary(10)].to_lowercase().clone();
+
+        // If the id is too short, return none
+        if id.len() < 4 {
+            None
+        } else {
+            Some(GameId { id })
+        }
     }
-}
 
-// Implement fromstr for GameId
-impl FromStr for GameId {
-    // Interpret errors as ParseIntError
-    type Err = ParseCharError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Parse as a game and return the result
-        Ok(GameId::new(s))
+    /// A method to return the id of the game as a string
+    ///
+    pub fn id(&self) -> String {
+        self.id.clone()
     }
 }
 
@@ -112,17 +116,6 @@ impl PlayerId {
     ///
     pub fn id(&self) -> String {
         self.id.clone()
-    }
-}
-
-// Implement fromstr for PlayerId
-impl FromStr for PlayerId {
-    // Interpret errors as ParseIntError
-    type Err = ParseCharError;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        // Parse as a game and return the result
-        PlayerId::new(s).ok_or(ParseCharError)
     }
 }
 
@@ -201,10 +194,10 @@ mod tests {
     #[test]
     fn compare_game_and_player_ids() {
         // Create several ids
-        let game_id = GameId::new("name1");
+        let game_id = GameId::new("name1").unwrap();
         let player_id = PlayerId::new("name1").unwrap();
 
         // Compare the ids
-        assert_ne!(game_id.id, player_id.id());
+        assert_ne!(game_id.id(), player_id.id());
     }
 }

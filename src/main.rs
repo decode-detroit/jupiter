@@ -272,7 +272,7 @@ impl Jupiter {
 
                     // Start the selected puzzle if it is available
                     Request::StartPuzzle { player_id, unique_puzzle } => {
-                        match self.database.start_puzzle(player_id, unique_puzzle).await {
+                        match self.database.start_puzzle(unique_puzzle, player_id).await {
                             Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
                         }
@@ -288,7 +288,7 @@ impl Jupiter {
 
                     // Verify that the specified player is the current player
                     Request::VerifyCurrentPlayer { player_id, unique_puzzle } => {
-                        match self.database.verify_current_player(player_id, unique_puzzle).await {
+                        match self.database.verify_current_player(&unique_puzzle, &player_id).await {
                             Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
                         }

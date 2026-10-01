@@ -89,6 +89,6 @@ impl TryFrom<StartPuzzle> for Request {
         let puzzle_id = PuzzleId::new(start_puzzle.puzzle_id).ok_or("Puzzle ID is not valid.")?;
 
         // Return the completed request
-        Ok(Request::StartPuzzle { player_id, game_id, puzzle_id })
+        Ok(Request::StartPuzzle { player_id, unique_puzzle: UniquePuzzle { game_id, puzzle_id }})
     }
 }

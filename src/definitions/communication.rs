@@ -161,7 +161,7 @@ pub enum Request {
     CreatePlayer { player_id: PlayerId },
 
     /// A variant to cue an event for a particular puzzle
-    CueEvent { event_id: ItemId },
+    CueEvent { player_id: PlayerId, unique_puzzle: UniquePuzzle, event_id: ItemId },
 
     /// A variant to get the status of a player
     PlayerStatus { player_id: PlayerId },
@@ -170,13 +170,13 @@ pub enum Request {
     Shutdown,
 
     /// A variant to request to start a puzzle
-    StartPuzzle { player_id: PlayerId, game_id: GameId, puzzle_id: PuzzleId },
+    StartPuzzle { player_id: PlayerId, unique_puzzle: UniquePuzzle },
 
     /// A variant to check if a player id exists
     VerifyPlayer { player_id: PlayerId },
 
     /// A variant to verify this player id for a given game and puzzle
-    VerifyCurrentPlayer { player_id: PlayerId, game_id: GameId, puzzle_id: PuzzleId },
+    VerifyCurrentPlayer { player_id: PlayerId, unique_puzzle: UniquePuzzle },
 }
 
 /// A struct to cover all replies

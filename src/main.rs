@@ -15,7 +15,8 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! The main module of the jupiter program which pulls from the other modules.
+//! The main module of the jupiter program which pulls from the other modules
+//! and handles communicaiton between the modules.
 
 // Allow deeper recursion testing for web server
 #![recursion_limit = "256"]
@@ -30,15 +31,19 @@ mod web_interface;
 use crate::definitions::*;
 
 // Import other structures into this module
+use self::database::Database;
 use self::web_interface::WebInterface;
-use self::system_interface::SystemInterface;
+
+// Import Tokio features
+use tokio::sync::mpsc;
 
 // Import anyhow features
 #[macro_use]
 extern crate anyhow;
+use anyhow::Result;
 
 // Import tracing features
-use tracing::Level;
+use tracing::{Level, error};
 use tracing_subscriber::filter::{LevelFilter, filter_fn};
 use tracing_subscriber::prelude::*;
 
@@ -91,10 +96,30 @@ struct Arguments {
 /// The Jupiter structure to contain the program launching and overall
 /// communication code.
 ///
-struct Jupiter;
+struct Jupiter {
+    jupiter_recv: mpsc::Receiver<WebRequest>,
+    update_send: PlayerSend,
+    database: Database,
+}
 
 // Implement the Jupiter functionality
 impl Jupiter {
+    /// A method to return a new instance of Jupiter
+    /// 
+    async fn new(config_file: &str) -> Result<(Self, JupiterSend, mpsc::Receiver<Update>)> {
+        // Create the jupiter request send and receive
+        let (jupiter_send, jupiter_recv) = JupiterSend::new();
+
+        // Create the player update send and receive
+        let (update_send, update_recv) = PlayerSend::new();
+
+        // Create the puzzle, game and player database from the configuration
+        let database = Database::new(config_file).await?;
+
+        // Return the new instance with other communication elements
+        Ok((Jupiter { jupiter_recv, update_send, database }, jupiter_send, update_recv ))
+    }
+    
     /// A function to setup the logging configuration
     ///
     fn setup_logging(log_string: String) -> tracing_appender::non_blocking::WorkerGuard {
@@ -147,7 +172,7 @@ impl Jupiter {
             .with(file_layer)
             .init();
 
-        // Return and file guard
+        // Return a file guard
         file_guard
     }
 
@@ -160,19 +185,18 @@ impl Jupiter {
         #[cfg(not(feature = "tokio_console"))]
         let _guard = Jupiter::setup_logging(arguments.log_level);
 
-        // Create the update send and receive
-        let (update_send, update_recv) = PlayerSend::new();
-
-        // Launch the system interface to monitor and handle events
-        let (system_interface, web_send) = SystemInterface::new(
-            update_send.clone(),
-            arguments.config,
-        )
-        .await;
+        // Create the new Jupiter instance
+        let (mut jupiter, jupiter_send, update_recv) = match Jupiter::new(&arguments.config).await {
+            Ok(tuple) => tuple,
+            Err(err) => {
+                error!("Unable to initialize Jupiter: {}", err);
+                return false;
+            }
+        };
 
         // Launch the web interface (creates its own threads)
         WebInterface::launch(
-            web_send,
+            jupiter_send,
             update_recv,
             arguments.address,
             arguments.cors_allowed_addr,
@@ -182,8 +206,100 @@ impl Jupiter {
         )
         .await;
 
-        // Block on the system interface
-        system_interface.run().await // return the shutdown variable
+        // Loop indefinitely waiting for the program to be closed by the user
+        let is_shutdown;
+        loop {
+            // Repeat endlessly until run_once reaches close
+            if let Err(shutdown) = jupiter.run_once().await {
+                is_shutdown = shutdown;
+                break;
+            }
+        }
+
+        // Drop all associated data in jupiter
+        drop(jupiter);
+
+        // Return the shutdown variable
+        is_shutdown
+    }
+
+    /// A method to run one iteration of the program to update the user
+    /// and process any outstanding requests.
+    ///
+    /// This method returns Ok(()) if the program should continue running, and
+    /// an Error if it should close. If Error(true), the user has requested the
+    /// computer shut down as well.
+    ///
+    async fn run_once(&mut self) -> Result<(), bool> {
+        // Check for updates on any line
+        tokio::select! {
+            // FIXME updates from the internal system
+
+            // Updates from the web
+            Some(request) = self.jupiter_recv.recv() => {
+                // Match the request type
+                match request.request {
+                    // Execute the close request
+                    Request::Close => {
+                        request.reply_to.send(Reply::success()).unwrap_or(());
+                        return Err(false); // exit the loop, but don't shutdown
+                    }
+
+                    // Create a new player id (or do nothing, if the player exists)
+                    Request::CreatePlayer { player_id } => {
+                        self.database.create_player(player_id).await;
+                        request.reply_to.send(Reply::success()).unwrap_or(());
+                    }
+
+                    // Cue an event for the selected game and puzzle
+                    Request::CueEvent { player_id, unique_puzzle, event_id } => {
+                        // FIXME Implement this variant
+                        request.reply_to.send(Reply::failure("Not implemented.")).unwrap_or(());
+                    }
+
+                    // Subscribe the player to any updates to this player status
+                    Request::PlayerStatus { player_id } => {
+                        let receiver = self.database.player_changes(player_id).await;
+                        
+                        // Forward the listening line to the web interface
+                        request.reply_to.send(Reply::success()).unwrap_or(()); // FIXME
+                    }
+
+                    // Execute the shutdown request
+                    Request::Shutdown => {
+                        request.reply_to.send(Reply::success()).unwrap_or(());
+                        return Err(true); // exit the loop and shutdown
+                    }
+
+                    // Start the selected puzzle if it is available
+                    Request::StartPuzzle { player_id, unique_puzzle } => {
+                        match self.database.start_puzzle(player_id, unique_puzzle).await {
+                            Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
+                            Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
+                        }
+                    }
+
+                    // Verify that the specified player exists
+                    Request::VerifyPlayer { player_id } => {
+                        match self.database.verify_player(player_id).await {
+                            Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
+                            Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
+                        }
+                    }
+
+                    // Verify that the specified player is the current player
+                    Request::VerifyCurrentPlayer { player_id, unique_puzzle } => {
+                        match self.database.verify_current_player(player_id, unique_puzzle).await {
+                            Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
+                            Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
+                        }
+                    }
+                }
+            }
+        }
+
+        // In most cases, indicate to continue normally
+        Ok(())
     }
 }
 

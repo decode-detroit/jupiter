@@ -35,7 +35,8 @@ mod event;
 mod ids;
 mod item;
 mod interface;
-mod status;
+mod player;
+mod puzzle;
 
 // Import Serde macros
 pub use serde::{Deserialize, Serialize};
@@ -49,5 +50,6 @@ pub use self::event::*;
 pub use self::ids::*;
 pub use self::item::*;
 pub use self::interface::*;
-pub use self::status::*;
+pub use self::player::*;
+pub use self::puzzle::*;
 

@@ -30,15 +30,10 @@ use fnv::FnvHashSet;
 
 pub const UNIVERSAL_IDENTIFIER: u32 = 0;
 
-/// The game instance identifier. Instances with the same identifier will trigger
-/// events with one another; instances with different identifiers will not.
+/// The jupiter instance identifier. Instances with the same identifier will
+/// share data when reloading, but risk overwriting each other during operation.
 ///
-/// If no identifier is specified, this instance will accept all events and
-/// produce events with the identifier 0.
-///
-/// If an identifier <x> is specified, this instance will only accept events with
-/// the identifier <x> or the universal identifier (0), and it will produce events
-/// with the identifier <x>.
+/// If no identifier is specified, this instance will use the universal identifier.
 ///
 /// Note: Specifying an identifier with the universersal identifier (0) is the
 /// same as specifying None.

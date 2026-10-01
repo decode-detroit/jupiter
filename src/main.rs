@@ -40,10 +40,9 @@ use tokio::sync::mpsc;
 // Import anyhow features
 #[macro_use]
 extern crate anyhow;
-use anyhow::Result;
 
 // Import tracing features
-use tracing::{Level, error};
+use tracing::Level;
 use tracing_subscriber::filter::{LevelFilter, filter_fn};
 use tracing_subscriber::prelude::*;
 

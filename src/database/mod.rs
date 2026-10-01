@@ -16,7 +16,7 @@
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
 //! A module to manage all the data of the system, including backing up the
-//! player data to a redis database if specified
+//! player data to a Redis database, if specified
 
 // Define program modules
 mod config;
@@ -38,14 +38,11 @@ use std::env;
 use tokio::fs::File;
 use tokio::sync::mpsc;
 
-// Import anyhow features
-use anyhow::Result;
-
 /// A struct to load and hold the player, game, and puzzle databases
 pub struct Database {
-    config: Config,
-    player_status: PlayerHandler,
-    puzzle_status: PuzzleHandler,
+    config: Config, // the configuration for this instance of Jupiter
+    player_status: PlayerHandler, // handler to manage status of the players
+    puzzle_status: PuzzleHandler, // handler to manage status of the puzzles
 }
 
 // Implement key features for the Database structure
@@ -65,12 +62,7 @@ impl Database {
         }
 
         // Attempt to open the configuration file
-        let config_file = match File::open(path.clone()).await {
-            Ok(file) => file,
-            Err(_) => {
-                return Err(anyhow!("Unable to open configuration file."));
-            }
-        };
+        let config_file = File::open(path.clone()).await.context("Unable to open configuration file.")?;
 
         // Attempt to load the configuration from the file
         let config = Config::from_config(config_file).await?;
@@ -98,7 +90,12 @@ impl Database {
 
     /// A method to subscribe this user to any changes with a particular player
     /// 
-    pub async fn player_changes(&self, player_id: PlayerId) -> mpsc::Receiver {
+    /// # Note
+    /// 
+    /// Only one user can be subscribed to a player at a time. Adding a new
+    /// subscriber replaces the old one.
+    /// 
+    pub async fn player_changes(&mut self, player_id: PlayerId) -> mpsc::Receiver<PlayerDetail> {
         // Create the matched channel
         let (sender, receiver) = mpsc::channel(128);
 
@@ -111,30 +108,30 @@ impl Database {
 
     /// A method to start a particular puzzle
     /// 
-    pub async fn start_puzzle(&self, player_id: PlayerId, unique_puzzle: UniquePuzzle) -> Result<()> {
+    pub async fn start_puzzle(&mut self, unique_puzzle: UniquePuzzle, player_id: PlayerId) -> Result<ItemId> {
         // Verify that the player is valid
-        self.player_status.verify_player(player_id).await?;
+        self.player_status.verify_player(&player_id).await?;
 
         // Try to make the player the current player
-        self.puzzle_status.start_puzzle(player_id, unique_puzzle)?
+        self.puzzle_status.start_puzzle(unique_puzzle, player_id)
     }
 
     /// A method to verify that a particular player exists
     /// 
     pub async fn verify_player(&mut self, player_id: PlayerId) -> Result<()> {
         // Verify that the player is valid
-        self.player_status.verify_player(player_id).await
+        self.player_status.verify_player(&player_id).await
     }
 
     /// A method to verify that a player exists and is the current player
     /// for a pariticular puzzle
     /// 
-    pub async fn verify_current_player(&mut self, player_id: PlayerId, unique_puzzle: UniquePuzzle) -> Result<()> {
+    pub async fn verify_current_player(&mut self, unique_puzzle: &UniquePuzzle, player_id: &PlayerId) -> Result<()> {
         // Verify that the player is valid
         self.player_status.verify_player(player_id).await?;
         
         // Verify that this player is the current player
-        self.puzzle_status.verify_current_player(player_id, unique_puzzle)?;
+        self.puzzle_status.verify_current_player(unique_puzzle, player_id)?;
         
         // TODO Retuan a line tracking puzzle updates
         Ok(())

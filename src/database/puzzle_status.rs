@@ -25,12 +25,6 @@ use crate::definitions::*;
 // Import standard library features
 use std::collections::hash_map::Entry::Occupied;
 
-// Import tracing features
-use tracing::error;
-
-// Import anyhow features
-use anyhow::Result;
-
 /// A structure which holds the puzzle status and manages any state changes.
 ///
 pub struct PuzzleHandler {
@@ -96,13 +90,38 @@ impl PuzzleHandler {
                     // Change the puzzle state and return the result
                     Occupied(mut puzzle) => puzzle.get_mut().start_puzzle(player_id),
         
-                    // The game does not exist
+                    // The puzzle does not exist
                     _ => Err(anyhow!("Puzzle Id does not exist.")),
                 }
             }
 
             // The game does not exist
             _ => Err(anyhow!("Game Id does not exist.")),
+        }
+    }
+
+    /// A method to verify that the provided player is the current player
+    /// for the specified puzzle.
+    /// 
+    /// This method will return an error if the specified game or puzzle does
+    /// not exist or if the player is not the current player.
+    /// 
+    pub fn verify_current_player(&self, unique_puzzle: &UniquePuzzle, player_id: &PlayerId) -> Result<()> {
+        // Try to look up the game
+        if let Some(game) = self.game_map.get(&unique_puzzle.game_id) {
+            // Try to look up the puzzle
+            if let Some(puzzle) = game.puzzles.get(&unique_puzzle.puzzle_id) {
+                // Verify the current player
+                puzzle.verify_current_player(player_id)
+    
+            // The puzzle does not exist
+            } else {
+                Err(anyhow!("Puzzle Id does not exist."))
+            }
+
+        // The game does not exist
+        } else {
+            Err(anyhow!("Game Id does not exist."))
         }
     }
 

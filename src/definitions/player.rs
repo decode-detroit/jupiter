@@ -26,12 +26,12 @@ use std::collections::HashMap;
 
 /// A type to store a hashmap of player ids and status details
 ///
-pub type PlayerMap = HashMap<PlayerId, PlayerDetails>; // a hash map of player id and player details
+pub type PlayerMap = HashMap<PlayerId, PlayerDetail>; // a hash map of player id and player details
 
 /// A struct to hold the state of a partiuclar player
 ///
 #[derive(PartialEq, Eq, Clone, Debug, Default, Serialize, Deserialize)]
-pub struct PlayerDetails {
+pub struct PlayerDetail {
     name: Option<String>, // name of the player, if provided
     email: Option<String>, // email of the player, if provided
     current_puzzle: Option<UniquePuzzle>, // the puzzle currently being played
@@ -39,7 +39,7 @@ pub struct PlayerDetails {
 }
 
 // Implement key features for player status
-impl PlayerDetails {
+impl PlayerDetail {
     /// A method to set the player name
     /// 
     pub fn set_name(&mut self, new_name: String) {

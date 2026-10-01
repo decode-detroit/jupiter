@@ -36,6 +36,12 @@ mod minerva;
 mod player;
 mod puzzle;
 
+// Import tracing features
+pub use tracing::{error, warn, info};
+
+// Import Anyhow features
+pub use anyhow::{Result, Context};
+
 // Import Serde macros
 pub use serde::{Deserialize, Serialize};
 

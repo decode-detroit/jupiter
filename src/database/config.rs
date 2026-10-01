@@ -36,12 +36,6 @@ use tokio::fs::File;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
-// Import tracing features
-use tracing::{error, info, warn};
-
-// Import anyhow features
-use anyhow::Result;
-
 // Import FNV HashMap
 use fnv::FnvHashMap;
 

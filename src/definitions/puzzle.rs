@@ -27,9 +27,6 @@ use std::collections::HashMap;
 // Import FNV HashMap
 use fnv::FnvHashMap; // better for small keys, like PuzzleId
 
-// Import anyhow features
-use anyhow::Result;
-
 // Define module constants
 pub const STARTING_SCORE: u32 = 0_u32; // the starting score for a puzzle
 
@@ -99,12 +96,14 @@ pub struct Puzzle {
 // Implement key features for the puzzle struct
 impl Puzzle {
     /// A method to check if a puzzle is currently available for new players
+    /// 
     pub fn is_available(&self) -> bool {
         self.current_state == self.available_state
     }
 
     /// A method to start a puzzle, adding the player id to the current players
     /// and returning the starting state if successful
+    /// 
     pub fn start_puzzle(&mut self, player_id: PlayerId) -> Result<ItemId> {
         // Throw an error if the puzzle is not available
         if !self.is_available() {
@@ -121,10 +120,29 @@ impl Puzzle {
         Ok(self.starting_event)
     }
 
+    /// A method to verify the current player of a puzzle.
+    /// 
+    pub fn verify_current_player(&self, player_id: &PlayerId) -> Result<()> {
+        // Check if there is a current player
+        match &self.current_player {
+            Some(current_player) => {
+                // Throw an error if the current player and provided player don't match
+                if current_player != player_id {
+                    Err(anyhow!("Puzzle is not available."))
+                // Otherwise, indicate the player matches
+                } else {
+                    Ok(())
+                }
+            }
+            _ => Err(anyhow!("There is no current player.")),
+        }
+    }
+
     /// A method to update the current state of the puzzle. If the change
     /// results in a score and a current player was specified, the
     /// current player and their score is returned. In this case, the current
     /// player is also removed from the this puzzle.
+    /// 
     pub fn change_state(&mut self, new_state: ItemId) -> Option<(PlayerId, Score)> {
         // Update the current state
         self.current_state = new_state;

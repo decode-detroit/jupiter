@@ -33,9 +33,6 @@ use tokio::sync::{mpsc, oneshot};
 use warp::ws::{Message, WebSocket};
 use warp::{Filter, http};
 
-// Import tracing features
-use tracing::{error, info};
-
 // Import stream-related features
 use async_stream::stream;
 use futures_util::StreamExt;

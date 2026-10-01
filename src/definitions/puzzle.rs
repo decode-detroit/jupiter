@@ -21,8 +21,11 @@
 // Import crate definitions
 use crate::definitions::*;
 
+// Import standard library features
+use std::collections::HashMap;
+
 // Import FNV HashMap
-use fnv::FnvHashMap;
+use fnv::FnvHashMap; // better for small keys, like PuzzleId
 
 // Import anyhow features
 use anyhow::Result;
@@ -32,13 +35,13 @@ pub const STARTING_SCORE: u32 = 0_u32; // the starting score for a puzzle
 
 /// A type definition to store all of the games
 /// 
-pub type Games = FnvHashMap<GameId, Game>; // a hash map of game id and game details
+pub type AllGames = HashMap<GameId, Game>; // a hash map of game id and game details
 
 /// A struct to store an individual game, currently defined as a hashset of puzzles
 ///
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct Game {
-    puzzles: FnvHashMap<PuzzleId, Puzzle>, // a set of puzzles for this game
+    pub puzzles: FnvHashMap<PuzzleId, Puzzle>, // a set of puzzles for this game
 }
 
 // Implement key features for the Game struct
@@ -69,7 +72,7 @@ pub type GameScores = FnvHashMap<PuzzleId, Score>;
 
 /// A type defining the score for all the games, currently just a set of game scores
 /// 
-pub type AllScores = FnvHashMap<GameId, GameScores>;
+pub type AllScores = HashMap<GameId, GameScores>;
 
 /// A struct to identify a puzzle uniquely (even if puzzle ids are not
 /// unique across games)
@@ -88,6 +91,7 @@ pub struct Puzzle {
     current_state: ItemId, // the current state of the puzzle
     available_state: ItemId, // the state when player(s) can be added
     starting_state: ItemId, // the state the puzzle should be changed to when a player is added
+    starting_event: ItemId, // the event id which will modify the puzzle to the corresponding starting state FIXME a bit of a hack and very brittle design
     score_map: FnvHashMap<ItemId, Score>, // a map of states to their corresponding score (including 0, typically a failure score)
     current_player: Option<PlayerId>, // the player who will receive the puzzle score
 }
@@ -107,14 +111,14 @@ impl Puzzle {
             return Err(anyhow!("Puzzle is not available."));
         }
 
-        // Update the current state
+        // Update the current state to prevent additional players from joining
         self.current_state = self.starting_state;
 
         // Add the player id to the current players
         self.current_player = Some(player_id);
 
         // Return the starting state
-        Ok(self.starting_state)
+        Ok(self.starting_event)
     }
 
     /// A method to update the current state of the puzzle. If the change
@@ -153,6 +157,7 @@ mod tests {
             current_state: puzzle_id, // Invalid values, but not relevant here
             available_state: puzzle_id,
             starting_state: puzzle_id,
+            starting_event: puzzle_id,
             score_map: FnvHashMap::default(),
             current_player: None,
         };
@@ -173,6 +178,7 @@ mod tests {
         let current_state = PuzzleId::new_unchecked(10);
         let available_state = PuzzleId::new_unchecked(11);
         let starting_state = PuzzleId::new_unchecked(12);
+        let starting_event = starting_state; // not typically true
         let winning_state = PuzzleId::new_unchecked(13);
         let losing_state = PuzzleId::new_unchecked(14);
         let player_id = PlayerId::new("Player1").unwrap();
@@ -183,6 +189,7 @@ mod tests {
             current_state,
             available_state,
             starting_state,
+            starting_event,
             score_map,
             current_player: None,
         };
@@ -195,7 +202,7 @@ mod tests {
         assert!(puzzle.is_available());
         
         // Start a player and verify that the puzzle isn't available
-        assert_eq!(starting_state, puzzle.start_puzzle(player_id.clone()).unwrap());
+        assert_eq!(starting_event, puzzle.start_puzzle(player_id.clone()).unwrap());
         assert!(!puzzle.is_available());
 
         // Let the player win, and verify that the correct player and score is returned

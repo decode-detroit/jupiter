@@ -29,7 +29,7 @@ use crate::definitions::*;
 // Import structures into this module
 use config::Config;
 use player_status::PlayerHandler;
-use puzzle_status::StatusHandler;
+use puzzle_status::PuzzleHandler;
 
 // Load standard library features
 use std::env;
@@ -45,7 +45,7 @@ use anyhow::Result;
 pub struct Database {
     config: Config,
     player_status: PlayerHandler,
-    puzzle_status: StatusHandler,
+    puzzle_status: PuzzleHandler,
 }
 
 // Implement key features for the Database structure
@@ -79,7 +79,7 @@ impl Database {
         let player_status = PlayerHandler::new(config.get_identifier(), config.get_server_location()).await;
 
         // Create the new puzzle status handler
-        let puzzle_status = StatusHandler::new(config.puzzle_map);
+        let puzzle_status = PuzzleHandler::new(config.puzzle_map);
 
         // Return the completed database
         Ok(Database {

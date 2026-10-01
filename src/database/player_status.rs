@@ -53,7 +53,7 @@ pub enum PlayerHandler {
 
     /// A variant without any connection to the Redis server
     Disconnected {
-        database: PlayerMap // the local copy of the player status
+        player_map: PlayerMap // the local copy of the player status
     }, // identifier is irrelevant as the data is internal
 }
 
@@ -102,7 +102,7 @@ impl PlayerHandler {
         // If a location was not specified or the connection failed,
         // return without a redis connection
         Self::Disconnected {
-            database: PlayerMap::default(),
+            player_map: PlayerMap::default(),
         }
     }
 
@@ -148,7 +148,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            Disconnected { database} => {
+            Disconnected { player_map: database} => {
                 // If the player doesn't exist, create a new empty one
                 database.entry(player_id).or_default();
                 
@@ -178,7 +178,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            Disconnected { database} => {
+            Disconnected { player_map: database} => {
                 // If the player doesn't exist
                 if !database.contains_key(&player_id) {
                     // Return an error
@@ -226,7 +226,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to modify the existing player
                 match database.entry(player_id) {
                     Occupied(mut details) => {
@@ -281,7 +281,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to modify the existing player
                 match database.entry(player_id) {
                     Occupied(mut details) => {
@@ -336,7 +336,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to modify the existing player
                 match database.entry(player_id) {
                     Occupied(mut details) => {
@@ -391,7 +391,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to modify the existing player
                 match database.entry(player_id) {
                     Occupied(mut details) => {
@@ -446,7 +446,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to modify the existing player
                 match database.entry(player_id) {
                     Occupied(mut details) => {
@@ -501,7 +501,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to modify the existing player
                 match database.entry(player_id) {
                     Occupied(mut details) => {
@@ -547,7 +547,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to retrive the player
                 match database.get(&player_id) {
                     Some(details) => {
@@ -590,7 +590,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to retrive the player
                 match database.get(&player_id) {
                     Some(details) => {
@@ -633,7 +633,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to retrive the player
                 match database.get(&player_id) {
                     Some(details) => {
@@ -676,7 +676,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            &mut Disconnected { ref mut database} => {
+            &mut Disconnected { player_map: ref mut database} => {
                 // Try to retrive the player
                 match database.get(&player_id) {
                     Some(details) => {
@@ -743,6 +743,41 @@ mod tests {
     // Test the disconnected version of the player handler
     #[tokio::test]
     async fn player_disconnected() {
+        // Create the player handler
+        let mut player_handler = PlayerHandler::new(
+            Identifier { id: None },
+            None,
+        ).await;
 
+        // Verify that is not connected
+        assert!(!player_handler.is_connected());
+
+        // Try adding two new players
+        let player1 = PlayerId::new("player1").unwrap();
+        let player2 = PlayerId::new("player2").unwrap();
+        assert!(player_handler.create_player(player1.clone()).await.is_ok());
+        assert!(player_handler.create_player(player2.clone()).await.is_ok());
+
+        // Verify that they exist but other players don't
+        let player3 = PlayerId::new("player3").unwrap();
+        assert!(player_handler.verify_player(&player1).await.is_ok());
+        assert!(player_handler.verify_player(&player2).await.is_ok());
+        assert!(player_handler.verify_player(&player3).await.is_err());
+
+        // Try setting a player name
+        assert_eq!(player_handler.get_name(player1.clone()).await.unwrap(), None);
+        assert!(player_handler.set_name(player1.clone(), "My Name".to_string()).await.is_ok());
+        assert_eq!(player_handler.get_name(player1.clone()).await.unwrap(), Some("My Name".to_string()));
+
+        // Try setting the current puzzle
+        let puzzle = UniquePuzzle { game_id: GameId::new("game1").unwrap(), puzzle_id: PuzzleId::new_unchecked(100) };
+        assert_eq!(player_handler.get_current_puzzle(player1.clone()).await.unwrap(), None);
+        assert!(player_handler.set_current_puzzle(player1.clone(), Some(puzzle.clone())).await.is_ok());
+        assert_eq!(player_handler.get_current_puzzle(player1.clone()).await.unwrap(), Some(puzzle.clone()));
+
+        // Try setting a particular score
+        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id.clone()).unwrap().get(&puzzle.puzzle_id), None);
+        assert!(player_handler.set_score(player1.clone(), puzzle.clone(), 300).await.is_ok());
+        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id).unwrap().get(&puzzle.puzzle_id), Some(&300));
     }
 }

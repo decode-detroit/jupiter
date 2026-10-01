@@ -15,21 +15,42 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! This module defines a basic identifier system (ItemId, ItemDescription,
-//! and ItemPair) to allow robust identification of all events,
-//! scenes, and other items in the program.
+//! This module defines the unique identifier system (PuzzleId, GameId,
+//! and PlayerId) to allow robust identification of all components.
 
 // Import crate definitions
 use crate::definitions::*;
 
-// Import standard library modules
+// Import standard library features
 use std::fmt;
 
 // Import Serde macros
 use serde::{Deserialize, Serialize};
 
-/// Define the All Stop command (a.k.a. emergency stop)
-const ALL_STOP: u32 = 0;
+pub const UNIVERSAL_IDENTIFIER: u32 = 0;
+
+/// The Jupiter instance identifier. Instances with the same identifier will
+/// share data when reloading, but risk overwriting each other during operation.
+///
+/// If no identifier is specified, this instance will use the universal identifier.
+///
+/// Note: Specifying an identifier with the universersal identifier (0) is the
+/// same as specifying None.
+///
+#[derive(PartialEq, Eq, Copy, Clone, Debug, Serialize, Deserialize)]
+pub struct Identifier {
+    pub id: Option<u32>, // An optionally-specified identifier for this instance
+}
+
+// Implement display for identifier
+impl fmt::Display for Identifier {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match &self.id {
+            Some(id) => write!(f, "{}", id),
+            _ => write!(f, "~"),
+        }
+    }
+}
 
 /// A type definition for a puzzle id. PuzzleId matches the format of the ItemId
 /// from sister program Minerva as they are used together.

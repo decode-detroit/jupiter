@@ -27,14 +27,12 @@ pub const ERROR_LOG: &str = "jupiter_log"; // the default logging filename
 pub const DEFAULT_ADDRESS: &str = "127.0.0.1:58748";
 
 // Define submodules
-mod background;
-mod backup;
 mod communication;
-mod connections;
 mod event;
 mod ids;
 mod item;
 mod interface;
+mod minerva;
 mod player;
 mod puzzle;
 
@@ -42,14 +40,12 @@ mod puzzle;
 pub use serde::{Deserialize, Serialize};
 
 // Reexport all the definitions from the submodules
-pub use self::background::*;
-pub use self::backup::*;
 pub use self::communication::*;
-pub use self::connections::*;
 pub use self::event::*;
 pub use self::ids::*;
 pub use self::item::*;
 pub use self::interface::*;
+pub use self::minerva::*;
 pub use self::player::*;
 pub use self::puzzle::*;
 

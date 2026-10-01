@@ -21,12 +21,12 @@
 // Import crate definitions
 use crate::definitions::*;
 
-// Import FNV HashMap
-use fnv::FnvHashMap;
+// Import standard library features
+use std::collections::HashMap;
 
 /// A type to store a hashmap of player ids and status details
 ///
-pub type PlayerMap = FnvHashMap<PlayerId, PlayerDetails>; // a hash map of player id and player details
+pub type PlayerMap = HashMap<PlayerId, PlayerDetails>; // a hash map of player id and player details
 
 /// A struct to hold the state of a partiuclar player
 ///
@@ -69,7 +69,7 @@ impl PlayerDetails {
         })
         .or_insert_with(|| {
             // Create a new game scores for this game and add this puzzle
-            let mut game_scores = FnvHashMap::default();
+            let mut game_scores = GameScores::default();
             game_scores.insert(unique_puzzle.puzzle_id, score);
             game_scores
         });
@@ -123,6 +123,6 @@ mod tests {
     // Test creation and modification of a player detail
     #[test]
     fn player() {
-        panic!("Not implemented!");
+        unimplemented!();
     }
 }

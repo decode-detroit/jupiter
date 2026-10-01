@@ -15,213 +15,128 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! This module implements the status handler to maintain the status of the
-//! system. This handler stores the status locally (though it may also be
-//! syncronized via the backup module).
-//!
-//! This module also implements low level status structs and enums which
-//! facilitate the storage of the status and the current state of that status.
+//! This module implements the puzzle handler to maintain the status of
+//! each puzzle. This handler stores the status locally and expects to receive
+//! updates on the puzzle status from Minerva.
 
 // Import crate definitions
 use crate::definitions::*;
 
-// Import tracing features
-use tracing::{error, info, warn};
+// Import standard library features
+use std::collections::hash_map::Entry::Occupied;
 
-/// A structure which holds the local status and manages any state changes.
+// Import tracing features
+use tracing::error;
+
+// Import anyhow features
+use anyhow::Result;
+
+/// A structure which holds the puzzle status and manages any state changes.
 ///
-/// # Notes
-///
-/// This module only holds and modifies the local copy of the system status. An
-/// additional copy may be held in the backup module.
-///
-pub struct StatusHandler {
-    status_map: StatusMap, // hash map of the local status
+pub struct PuzzleHandler {
+    game_map: AllGames, // hash map of the individual games
 }
 
-// Implement key features for the status handler
-impl StatusHandler {
-    /// A function to create and return a new status handler.
+// Implement key features for the puzzle handler
+impl PuzzleHandler {
+    /// A function to create and return a new puzzle handler.
     ///
-    /// # Errors
-    ///
-    /// This function does not return any errors or warnings.
-    ///
-    /// Like all StatusHandler functions and methods, this function will fail
-    /// gracefully by notifying of any errors on the update line and returning
-    /// None.
-    ///
-    pub fn new(status_map: StatusMap) -> StatusHandler {
+    pub fn new(game_map: AllGames) -> Self {
         // Return the new status handler
-        StatusHandler { status_map }
+        Self { game_map }
     }
 
-    /// A method to get the current state of the requested status. This
-    /// method returns the state as an item id.
-    ///
+    /// A method to check if a puzzle is currently available.
+    /// 
     /// # Errors
-    ///
-    /// This method will raise an error if the provided status id was not found
-    /// in the configuration. This usually indicates a problem with the
-    /// underlying confirguration file.
-    ///
-    /// Like all StatusHandler functions and methods, this function will fail
-    /// gracefully by notifying of any errors on the update line and returning
-    /// None.
-    ///
-    pub async fn get_state(&self, status_id: &ItemId) -> Option<ItemId> {
-        // Try to return the local status as an id
-        if let Some(status) = self.status_map.get(status_id) {
-            // Return the current state
-            Some(status.current())
-
-        // Warn that there is an error with the provided status id
-        } else {
-            error!("Unable to locate current state of status: {}.", &status_id);
-            None
-        }
-    }
-
-    /// A method to get the status of the requested item id.
-    ///
-    pub fn get_status(&self, status_id: &ItemId) -> Option<Status> {
-        // Return the status if found
-        self.status_map.get(status_id).cloned()
-    }
-
-    /// A method to edit an existing status, add a new one, or delete the existing
-    ///
-    pub async fn edit_status(
-        &mut self,
-        status_id: ItemId,
-        possible_status: Option<Status>,
-        description: String,
-    ) {
-        // If a new status was specified
-        if let Some(new_status) = possible_status {
-            // If the scene is in the status_map
-            if let Some(status) = self.status_map.get_mut(&status_id) {
-                // Update the status and notify the system
-                *status = new_status;
-                info!("Status updated: {}.", description);
-
-            // Otherwise, add the status
-            } else {
-                info!("Status added: {}.", description);
-                self.status_map.insert(status_id, new_status);
-            }
-
-        // If no new status was specified
-        } else {
-            // If the status is in the status map, remove it
-            if self.status_map.remove(&status_id).is_some() {
-                // Notify the user that it was removed
-                info!("Status removed: {}.", description);
-            }
-        }
-    }
-
-    /// A method to modify a status state within the current scene based
-    /// on the provided status id and new state. Method returns the new state or
-    /// None. None is returned either because
-    ///  * the status was already in this state and the status has the
-    ///    no_change_silent flag set, or
-    ///  * if the state failed to change because one or both ids are invalid.
-    ///
-    /// # Errors
-    ///
-    /// This function will raise an error if the provided id was not found in
-    /// the configuration. This usually indicates a problem with the underlying
-    /// configuration file.
-    ///
-    /// Like all StatusHandler functions and methods, this method will fail
-    /// gracefully by notifying of errors on the update line and returning false.
-    ///
-    pub async fn modify_status(
-        &mut self,
-        status_id: &ItemId,
-        new_state: &ItemId,
-    ) -> Option<ItemId> {
-        // Try to get a mutable reference to the status
-        if let Some(status) = self.status_map.get_mut(status_id) {
-            // Try to update the status and return the result
-            status.update(*new_state)
-
-        // Warn the system that this is not a valid id
-        } else {
-            warn!("Status Id not found in config: {}.", status_id);
-            None
-        }
-    }
-
-    /// A method to return a copy of the status map inside the status handler.
-    ///
-    /// # Errors
-    ///
-    /// This method does not return any errors.
-    ///
-    pub fn get_map(&self) -> StatusMap {
-        self.status_map.clone()
-    }
-
-    /// A method to return a vector of the valid status ids in the status handler.
-    ///
-    /// # Errors
-    ///
-    /// This method does not return any errors.
-    ///
-    pub fn get_ids(&self) -> Vec<ItemId> {
-        // Compile a list of ids from the status map
-        let mut ids = Vec::new();
-        for id in self.status_map.keys() {
-            ids.push(*id);
-        }
-
-        // Return the completed list
-        ids
-    }
-
-    /// A method to return a hashmap of the complete described status map in
-    /// this configuration.
-    ///
-    /// # Errors
-    ///
-    /// This method does not return any errors
-    ///
-    pub fn get_partial_status(&self) -> PartialStatus {
-        // Compile a list of the available statuses
-        let mut id_vec = Vec::new();
-        for key in self.status_map.keys() {
-            id_vec.push(*key);
-        }
-
-        // Sort the status ids
-        id_vec.sort_unstable();
-
-        // Pair them with their descriptions
-        let mut partial_status = PartialStatus::default();
-        for status_id in id_vec {
-            // Compose the status into a status description
-            let status_description = match self.status_map.get(&status_id) {
-                // The status exists
-                Some(status) => {
-                    // Repackage as a new status description
-                    StatusPartialDescription {
-                        current: status.current(),
-                        allowed: status.allowed(),
+    /// 
+    /// This method will raise an error if the specified game or puzzle does
+    /// not exist.
+    /// 
+    pub fn is_available(&mut self, unique_puzzle: UniquePuzzle) -> bool {
+        // Try to look up the game
+        match self.game_map.entry(unique_puzzle.game_id) {
+            Occupied(mut game) => {
+                // Try to look up the puzzle
+                match game.get_mut().puzzles.entry(unique_puzzle.puzzle_id) {
+                    // Change the puzzle state and return the result
+                    Occupied(puzzle) => puzzle.get().is_available(),
+        
+                    // The game does not exist
+                    _ => {
+                        error!("Puzzle Id does not exist.");
+                        false
                     }
                 }
+            }
 
-                // The description was not found - should not be possible
-                None => unreachable!(),
-            };
-
-            // Add the status description to the hashmap of statuses
-            partial_status.insert(status_id, status_description);
+            // The game does not exist
+            _ => {
+                error!("Game Id does not exist.");
+                false
+            }
         }
+    }
 
-        // Return the result
-        partial_status
+    /// A method to start a puzzle, if it is currently available. This method
+    /// returns the starting event which should be forwarded to Minerva and will
+    /// update the puzzle to the starting state.
+    /// 
+    /// # Errors
+    /// 
+    /// This method will return an error if the specified game or puzzle does
+    /// not exist or if the puzzle is not available.
+    /// 
+    pub fn start_puzzle(&mut self, unique_puzzle: UniquePuzzle, player_id: PlayerId) -> Result<ItemId> {
+        // Try to look up the game
+        match self.game_map.entry(unique_puzzle.game_id) {
+            Occupied(mut game) => {
+                // Try to look up the puzzle
+                match game.get_mut().puzzles.entry(unique_puzzle.puzzle_id) {
+                    // Change the puzzle state and return the result
+                    Occupied(mut puzzle) => puzzle.get_mut().start_puzzle(player_id),
+        
+                    // The game does not exist
+                    _ => Err(anyhow!("Puzzle Id does not exist.")),
+                }
+            }
+
+            // The game does not exist
+            _ => Err(anyhow!("Game Id does not exist.")),
+        }
+    }
+
+    /// A method to update the state of the specified puzzle. This method
+    /// returns a player id and score if the new state yielded a score.
+    /// 
+    /// # Errors
+    /// 
+    /// This method will raise an error if the specified game or puzzle does
+    /// not exist.
+    /// 
+    pub fn change_state(&mut self, unique_puzzle: UniquePuzzle, new_state: ItemId) -> Option<(PlayerId, Score)> {
+        // Try to look up the game
+        match self.game_map.entry(unique_puzzle.game_id) {
+            Occupied(mut game) => {
+                // Try to look up the puzzle
+                match game.get_mut().puzzles.entry(unique_puzzle.puzzle_id) {
+                    // Change the puzzle state and return the result
+                    Occupied(mut puzzle) => puzzle.get_mut().change_state(new_state),
+        
+                    // The game does not exist
+                    _ => {
+                        error!("Puzzle Id does not exist.");
+                        None
+                    }
+                }
+            }
+
+            // The game does not exist
+            _ => {
+                error!("Game Id does not exist.");
+                None
+            }
+        }
     }
 }
 
@@ -232,52 +147,7 @@ mod tests {
 
     // Test getting and modifying a status
     #[tokio::test]
-    async fn change_status() {
-        // Create placeholder ids
-        let status1 = ItemId::new_unchecked(1);
-        let status2 = ItemId::new_unchecked(2);
-        let state1 = ItemId::new_unchecked(10);
-        let state2 = ItemId::new_unchecked(11);
-        let invalid_state = ItemId::new_unchecked(12);
-
-        // Create the status map
-        let mut status_map = StatusMap::default();
-        status_map.insert(
-            status1,
-            Status::MultiState {
-                current: state1,
-                allowed: vec![state1, state2],
-                no_change_silent: false,
-            },
-        );
-        status_map.insert(
-            status2,
-            Status::MultiState {
-                current: state1,
-                allowed: vec![state1, state2],
-                no_change_silent: false,
-            },
-        );
-
-        // Create a new status handler
-        let mut status_handler = StatusHandler::new(status_map);
-
-        // Check the current state
-        assert_eq!(Some(state1), status_handler.get_state(&status1).await);
-        assert_eq!(Some(state1), status_handler.get_state(&status2).await);
-
-        // Modify both statuses and check the new state
-        assert_eq!(
-            Some(state2),
-            status_handler.modify_status(&status1, &state2).await
-        );
-        assert_eq!(
-            None,
-            status_handler.modify_status(&status2, &invalid_state).await
-        ); // invalid change
-
-        // Check the changed states
-        assert_eq!(Some(state2), status_handler.get_state(&status1).await);
-        assert_eq!(Some(state1), status_handler.get_state(&status2).await);
+    async fn puzzle_handler() {
+        unimplemented!();
     }
 }

@@ -1,4 +1,4 @@
-// Copyright (c) 2021 Decode Detroit
+// Copyright (c) 2026 Decode Detroit
 // Author: Patton Doyle
 // Licence: GNU GPLv3
 //
@@ -15,19 +15,6 @@
 // You should have received a copy of the GNU General Public License
 // along with this program.  If not, see <http://www.gnu.org/licenses/>.
 
-//! This module implements structures to define the background process.
+//! This module defines the interaction locations for Minerva instances
+//! and their connection to the game(s) on Jupiter.
 
-// Import standard library features
-use std::path::PathBuf;
-
-// Import Serde macros
-use serde::{Deserialize, Serialize};
-
-/// A struct to define the elements of a background process
-///
-#[derive(Clone, Debug, Serialize, Deserialize)]
-pub struct BackgroundProcess {
-    pub process: PathBuf, // the location (relative or absolute) of the process to run
-    pub arguments: Vec<String>, // any arguments to pass to the process
-    pub keepalive: bool,  // a flag to indicate if the process should be restarted if it stops/fails
-}

@@ -18,3 +18,17 @@
 //! This module defines the interaction locations for Minerva instances
 //! and their connection to the game(s) on Jupiter.
 
+// Import crate definitions
+use crate::definitions::*;
+
+/// Define parameters for a Minerva connection
+///
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct MinervaParams {
+    pub game_id: GameId,
+    pub address: Option<String>,
+}
+
+/// A collection of Minerva parameters for the configuration file
+/// 
+pub type MinervaControllers = Vec<MinervaParams>;

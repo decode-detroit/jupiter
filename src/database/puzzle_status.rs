@@ -100,6 +100,36 @@ impl PuzzleHandler {
         }
     }
 
+    /// A method to return a puzzle to its available state (should be used
+    /// only when attempting to start a puzzle but Minerva could not be reached)
+    /// 
+    /// # Errors
+    /// 
+    /// This method will return an error if the specified game or puzzle does
+    /// not exist or if the puzzle is not available.
+    /// 
+    pub fn reset_puzzle(&mut self, unique_puzzle: UniquePuzzle) -> Result<()> {
+        // Try to look up the game
+        match self.game_map.entry(unique_puzzle.game_id) {
+            Occupied(mut game) => {
+                // Try to look up the puzzle
+                match game.get_mut().puzzles.entry(unique_puzzle.puzzle_id) {
+                    // Change the puzzle state and return the result
+                    Occupied(mut puzzle) => {
+                        puzzle.get_mut().reset_puzzle();
+                        Ok(())
+                    }
+        
+                    // The puzzle does not exist
+                    _ => Err(anyhow!("Puzzle Id does not exist.")),
+                }
+            }
+
+            // The game does not exist
+            _ => Err(anyhow!("Game Id does not exist.")),
+        }
+    }
+
     /// A method to verify that the provided player is the current player
     /// for the specified puzzle.
     /// 

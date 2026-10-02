@@ -101,6 +101,18 @@ impl Puzzle {
         self.current_state == self.available_state
     }
 
+    /// A method to reset a puzzle to its available state. This method should
+    /// only be used if you know the puzzle was available to start, but Minerva
+    /// could not be reached.
+    /// 
+    pub fn reset_puzzle(&mut self) {
+        // Update the current state to available
+        self.current_state = self.available_state;
+
+        // Remove any current player
+        self.current_player = None;
+    }
+
     /// A method to start a puzzle, adding the player id to the current players
     /// and returning the starting state if successful
     /// 

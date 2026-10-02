@@ -47,13 +47,13 @@ pub enum PlayerHandler {
     Connected {
         identifier: Identifier, // the optional identifier for this instance
         connection: redis::aio::MultiplexedConnection, // the Redis connection, if it exists
-        player_listeners: HashMap<PlayerId, mpsc::Sender<PlayerDetail>>, // a map of player ids and sending lines to update the user
+        player_listeners: HashMap<PlayerId, mpsc::Sender<AllScores>>, // a map of player ids and sending lines to update the user
     },
 
     /// A variant without any connection to the Redis server
     Disconnected {
         player_map: PlayerMap, // the local copy of the player status
-        player_listeners: HashMap<PlayerId, mpsc::Sender<PlayerDetail>>, // a map of player ids and sending lines to update the user
+        player_listeners: HashMap<PlayerId, mpsc::Sender<AllScores>>, // a map of player ids and sending lines to update the user
     }, // identifier is irrelevant as the data is internal
 }
 
@@ -200,7 +200,7 @@ impl PlayerHandler {
     /// Only one user can be subscribed to a player at a time. Adding a new
     /// subscriber replaces the old one.
     /// 
-    pub fn add_listener(&mut self, player_id: PlayerId, sender: mpsc::Sender<PlayerDetail>) {
+    pub fn add_listener(&mut self, player_id: PlayerId, sender: mpsc::Sender<AllScores>) {
         // Add the listening line to the corresponding hashmap
         match self {
             Connected { player_listeners, .. } => player_listeners.insert(player_id, sender),
@@ -238,26 +238,20 @@ impl PlayerHandler {
                 // Try to set the new detail
                 connection.set::<String, String, bool>(format!("jupiter:{}:{}", identifier, player_id),player_string).await.context("Unable to update player.")?;
 
-                // Update any listeners
-                self.send_updates(&player_id, detail);
-
                 // Indicate success
                 Ok(())
             },
 
             // Verify that the player is in the local database
             &mut Disconnected { ref mut player_map, .. } => {
-                // Save the new detail for future use
-                let new_detail;
-
                 // Try to modify the existing player
                 match player_map.entry(player_id.clone()) {
                     Occupied(mut detail) => {
                         // Set or update the score
                         detail.get_mut().set_name(name);
-                        
-                        // Save the new detail
-                        new_detail = detail.get().clone();
+
+                        // Indicate success
+                        Ok(())
                     }
 
                     // The player does not exist
@@ -265,12 +259,6 @@ impl PlayerHandler {
                         return Err(anyhow!("Player Id does not exist."));
                     }
                 }
-
-                // Update any listeners
-                self.send_updates(&player_id, new_detail);
-
-                // Indicate success
-                Ok(())
             },
         }
     }
@@ -305,26 +293,20 @@ impl PlayerHandler {
                 // Try to set the new detail
                 connection.set::<String, String, bool>(format!("jupiter:{}:{}", identifier, player_id),player_string).await.context("Unable to update player.")?;
 
-                // Update any listeners
-                self.send_updates(&player_id, detail);
-
                 // Indicate success
                 Ok(())
             },
 
             // Verify that the player is in the local database
             &mut Disconnected { ref mut player_map, .. } => {
-                // Save the new detail for future use
-                let new_detail;
-
                 // Try to modify the existing player
                 match player_map.entry(player_id.clone()) {
                     Occupied(mut detail) => {
                         // Set or update the score
                         detail.get_mut().set_email(email);
                         
-                        // Save the new detail
-                        new_detail = detail.get().clone();
+                        // Indicate success
+                        Ok(())
                     }
 
                     // The player does not exist
@@ -332,12 +314,6 @@ impl PlayerHandler {
                         return Err(anyhow!("Player Id does not exist."));
                     }
                 }
-
-                // Update any listeners
-                self.send_updates(&player_id, new_detail);
-
-                // Indicate success
-                Ok(())
             },
         }
     }
@@ -372,26 +348,20 @@ impl PlayerHandler {
                 // Try to set the new detail
                 connection.set::<String, String, bool>(format!("jupiter:{}:{}", identifier, player_id),player_string).await.context("Unable to update player.")?;
 
-                // Update any listeners
-                self.send_updates(&player_id, detail);
-
                 // Indicate success
                 Ok(())
             },
 
             // Verify that the player is in the local database
             &mut Disconnected { ref mut player_map, .. } => {
-                // Save the new detail for future use
-                let new_detail;
-
                 // Try to modify the existing player
                 match player_map.entry(player_id.clone()) {
                     Occupied(mut detail) => {
                         // Set or update the score
                         detail.get_mut().set_current_puzzle(current_puzzle);
                         
-                        // Save the new detail
-                        new_detail = detail.get().clone();
+                        // Indicate success
+                        Ok(())
                     }
 
                     // The player does not exist
@@ -399,12 +369,6 @@ impl PlayerHandler {
                         return Err(anyhow!("Player Id does not exist."));
                     }
                 }
-
-                // Update any listeners
-                self.send_updates(&player_id, new_detail);
-
-                // Indicate success
-                Ok(())
             },
         }
     }
@@ -440,7 +404,7 @@ impl PlayerHandler {
                 connection.set::<String, String, bool>(format!("jupiter:{}:{}", identifier, player_id),player_string).await.context("Unable to update player.")?;
 
                 // Update any listeners
-                self.send_updates(&player_id, detail);
+                self.send_score_updates(&player_id, detail.get_all_scores());
 
                 // Indicate success
                 Ok(())
@@ -449,7 +413,7 @@ impl PlayerHandler {
             // Verify that the player is in the local database
             &mut Disconnected { ref mut player_map, .. } => {
                 // Save the new detail for future use
-                let new_detail;
+                let scores;
 
                 // Try to modify the existing player
                 match player_map.entry(player_id.clone()) {
@@ -458,7 +422,7 @@ impl PlayerHandler {
                         detail.get_mut().set_score(unique_puzzle, score);
                         
                         // Save the new detail
-                        new_detail = detail.get().clone();
+                        scores = detail.get().get_all_scores();
                     }
 
                     // The player does not exist
@@ -468,7 +432,7 @@ impl PlayerHandler {
                 }
 
                 // Update any listeners
-                self.send_updates(&player_id, new_detail);
+                self.send_score_updates(&player_id, scores);
 
                 // Indicate success
                 Ok(())
@@ -507,7 +471,7 @@ impl PlayerHandler {
                 connection.set::<String, String, bool>(format!("jupiter:{}:{}", identifier, player_id),player_string).await.context("Unable to update player.")?;
 
                 // Update any listeners
-                self.send_updates(&player_id, detail);
+                self.send_score_updates(&player_id, detail.get_all_scores());
 
                 // Indicate success
                 Ok(())
@@ -516,7 +480,7 @@ impl PlayerHandler {
             // Verify that the player is in the local database
             &mut Disconnected { ref mut player_map, .. } => {
                 // Save the new detail for future use
-                let new_detail;
+                let scores;
 
                 // Try to modify the existing player
                 match player_map.entry(player_id.clone()) {
@@ -525,7 +489,7 @@ impl PlayerHandler {
                         detail.get_mut().set_scores(game_id, game_scores);
                         
                         // Save the new detail
-                        new_detail = detail.get().clone();
+                        scores = detail.get().get_all_scores();
                     }
 
                     // The player does not exist
@@ -535,7 +499,7 @@ impl PlayerHandler {
                 }
 
                 // Update any listeners
-                self.send_updates(&player_id, new_detail);
+                self.send_score_updates(&player_id, scores);
 
                 // Indicate success
                 Ok(())
@@ -572,9 +536,6 @@ impl PlayerHandler {
 
                 // Try to set the new detail
                 connection.set::<String, String, bool>(format!("jupiter:{}:{}", identifier, player_id),player_string).await.context("Unable to update player.")?;
-                        
-                // Update any listeners
-                self.send_updates(&player_id, detail);
 
                 // Indicate success
                 Ok(())
@@ -582,17 +543,14 @@ impl PlayerHandler {
 
             // Verify that the player is in the local database
             &mut Disconnected { ref mut player_map, .. } => {
-                // Save the new detail for future use
-                let new_detail;
-
                 // Try to modify the existing player
                 match player_map.entry(player_id.clone()) {
                     Occupied(mut detail) => {
                         // Set or update the score
                         detail.get_mut().clear_pii();
                         
-                        // Save the new detail
-                        new_detail = detail.get().clone();
+                        // Indicate success
+                        Ok(())
                     }
 
                     // The player does not exist
@@ -600,12 +558,6 @@ impl PlayerHandler {
                         return Err(anyhow!("Player Id does not exist."));
                     }
                 }
-
-                // Update any listeners
-                self.send_updates(&player_id, new_detail);
-
-                // Indicate success
-                Ok(())
             },
         }
     }
@@ -782,22 +734,65 @@ impl PlayerHandler {
         }
     }
 
-    /// A helper method to send updated to any subscribed users for a particular
-    /// player. This method failes silently.
+    /// A method to get all the player's detail
     /// 
-    fn send_updates(&self, player_id: &PlayerId, new_detail: PlayerDetail) {
+    /// # Errors
+    ///
+    /// This function will return an Err if it was unable to communicate
+    /// with the Redis database or if the player does not exist.
+    ///
+    /// FIXME These functions are lots of boilerplate and could probably
+    /// be easily condensed into a macro or other syntactic sugar
+    /// 
+    pub async fn get_detail(&mut self, player_id: PlayerId) -> Result<PlayerDetail> {
+        // Match the connection type
+        match self {
+            // Verify that the player is in the Redis database
+            &mut Connected { identifier, ref mut connection, .. } => {
+                // Try to read the player from the database
+                let player_string = connection.get::<String, String>(format!("jupiter:{}:{}", identifier, player_id)).await.context("Player Id does not exist.")?;
+
+                // Attempt to serialize the string
+                let detail = serde_yaml::from_str::<PlayerDetail>(&player_string).context("Unable to parse player detail.")?;
+
+                // Return the player name
+                Ok(detail.get_detail())
+            },
+
+            // Verify that the player is in the local database
+            &mut Disconnected { ref mut player_map, .. } => {
+                // Try to retrive the player
+                match player_map.get(&player_id) {
+                    Some(detail) => {
+                        // Return the player name
+                        Ok(detail.get_detail())
+                    }
+
+                    // The player does not exist
+                    _ => {
+                        Err(anyhow!("Player Id does not exist."))
+                    }
+                }
+            },
+        }
+    }
+
+    /// A helper method to send score update to any subscribed users for a
+    /// particular player. This method failes silently.
+    /// 
+    fn send_score_updates(&self, player_id: &PlayerId, new_scores: AllScores) {
         // Switch by connection type
         match self {
             Connected { player_listeners, .. } => {
                 // If there is a matching line in the hash map
                 if let Some(sender) = player_listeners.get(player_id) {
-                    let _ = sender.try_send(new_detail); // Ignore any failure
+                    let _ = sender.try_send(new_scores); // Ignore any failure
                 }
             }
             Disconnected { player_listeners, .. } => {
                 // If there is a matching line in the hash map
                 if let Some(sender) = player_listeners.get(player_id) {
-                    let _ = sender.try_send(new_detail); // Ignore any failure
+                    let _ = sender.try_send(new_scores); // Ignore any failure
                 }
             }
         }

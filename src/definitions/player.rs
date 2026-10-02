@@ -111,6 +111,12 @@ impl PlayerDetail {
     pub fn get_all_scores(&self) -> AllScores {
         self.current_scores.clone()
     }
+
+    /// A method to get all the detail for this player
+    /// 
+    pub fn get_detail(&self) -> PlayerDetail {
+        self.clone()
+    }
 }
 
 

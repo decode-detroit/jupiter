@@ -59,7 +59,6 @@ impl WebInterface {
     ///
     pub async fn launch(
         jupiter_send: JupiterSend,
-        update_recv: mpsc::Receiver<Update>,
         addr: String,
         cors_allowed_addr: Option<Vec<String>>,
         possible_cert_path: Option<String>,
@@ -71,12 +70,6 @@ impl WebInterface {
 
         // Create a channel for sending new listener handles
         let (listener_send, listener_recv) = mpsc::channel(512);
-
-        // Spin up a thread to pass messages to all the limited web sockets
-        let jupiter_clone = jupiter_send.clone();
-        tokio::spawn(async move {
-            WebInterface::forward_updates(jupiter_clone, listener_recv, update_recv).await;
-        });
 
         // If the address is valid
         if let Ok(address) = possible_address {

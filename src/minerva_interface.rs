@@ -21,6 +21,10 @@
 use crate::definitions::*;
 
 // Import standard library features
+use std::collections::HashMap;
+use std::collections::hash_map::Entry::Occupied;
+
+// Import standard library features
 use std::path::PathBuf;
 
 // Import tokio elements
@@ -31,26 +35,33 @@ use tokio::time::{Duration, sleep};
 // Import reqwest elements
 use reqwest::Client;
 
-// Import tracing features
-use tracing::{error, info};
+/// A structure to define a cue event for communicating with Minerva
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct FullCueEvent {
+    id: u32,
+    secs: u64,
+    nanos: u64,
+}
 
-/// A structure to hold and manage the Vulcan DMX controller thread
+/// A structure to hold and manage a Minerva thread
 ///
-struct VulcanThread;
+struct MinervaThread;
 
-// Implement the VulcanThread Functions
-impl VulcanThread {
-    /// Spawn a copy of vulcan and the monitoring thread
+// Implement the MinervaThread Functions
+impl MinervaThread {
+    /* FIXME Reenable this will all Minerva options
+    /// Spawn a copy of minerva and the monitoring thread
     async fn spawn(
-        mut receiver: mpsc::Receiver<DmxFade>,
+        mut receiver: mpsc::Receiver<ItemId>,
         path: PathBuf,
         address: String,
         backup_location: Option<String>,
     ) {
         // Notify that the background process is starting
-        info!("Starting Vulcan DMX controller ...");
+        info!("Starting Minerva Game controller ...");
 
-        // Compose the arguments
+        // Compose the arguments for the command
         let mut arguments = vec![
             "-p".into(),
             path.to_str().unwrap_or("").into(),
@@ -180,18 +191,18 @@ impl VulcanThread {
                 sleep(Duration::from_secs(1)).await;
             }
         });
-    }
+    }*/
 
     /// Spawn the monitoring thread only
-    async fn no_spawn(mut receiver: mpsc::Receiver<DmxFade>, address: String) {
+    async fn no_spawn(mut receiver: mpsc::Receiver<ItemId>, address: String) {
         // Notify that the background process is starting
-        info!("Connection to Vulcan DMX controller ...");
+        info!("Connecting to Minerva Game controller ...");
 
-        // Create a client for passing dmx information
+        // Create a client for passing event information
         let client = match Client::builder().timeout(Duration::from_secs(10)).build() {
             // On error close the monitoring thread
             Err(_) => {
-                error!("Unable to create Vulcan communication client.");
+                error!("Unable to create Minerva communication client.");
                 return;
             }
 
@@ -203,19 +214,23 @@ impl VulcanThread {
         tokio::spawn(async move {
             // Run indefinitely or until the line is closed
             loop {
-                // If a fade was received
-                if let Some(fade) = receiver.recv().await {
-                    // Recompose the dmx fade into a helper
-                    let helper: DmxFadeHelper = fade.into();
+                // If a event was received
+                if let Some(event_id) = receiver.recv().await {
+                    // Compose the full cue event
+                    let cue_event = FullCueEvent {
+                        id: event_id.id(),
+                        secs: 0,
+                        nanos: 0,
+                    };
 
-                    // Pass the dmx fade on to Vulcan
+                    // Pass the dmx fade on to Minerva
                     if let Err(err) = client
-                        .post(format!("http://{}/playFade", address))
-                        .json(&helper)
+                        .post(format!("http://{}/cueEvent", address))
+                        .json(&cue_event)
                         .send()
                         .await
                     {
-                        error!("Error with DMX Fade: {}", err);
+                        error!("Error with Cue Event: {}", err);
                     };
 
                     // Start listening again for more messages
@@ -224,38 +239,41 @@ impl VulcanThread {
                 // Otherwise, the sending line has been dropped
                 } else {
                     // Notify of the closure
-                    info!("Disconnecting from Vulcan DMX controller ...");
+                    info!("Disconnecting from Minerva Game controller ...");
 
                     // Exit the loop and close the background thread
                     break;
                 }
             }
         });
+
+        // FIXME create a listening line for events and tag with the game id
+
     }
 }
 
-/// A structure to hold and manipulate the connection to the dmx backend
+/// A structure to hold and manipulate the connection to the minerva backend
 ///
-pub struct DmxInterface {
-    sender: mpsc::Sender<DmxFade>, // a line to pass fades to the background thread. The line is poisoned when this structure is dropped
+struct MinervaInterface {
+    sender: mpsc::Sender<ItemId>, // a line to pass events to the background thread. The line is poisoned when this structure is dropped
 }
 
-// Implement key functionality for the DMX Interface structure
-impl DmxInterface {
-    /// A function to create a new instance of the MediaInterface
+// Implement key functionality for the Minerva Interface structure
+impl MinervaInterface {
+    /// A function to create a new instance of the Minerva interface
     ///
-    pub async fn new(vulcan_params: VulcanParams, backup_location: Option<String>) -> Self {
+    async fn new(minerva_params: MinervaParams) -> Self {
         // Copy the specified address or use the default
-        let address = vulcan_params
+        let address = minerva_params
             .address
             .clone()
-            .unwrap_or(String::from("127.0.0.1:8852"));
+            .unwrap_or(String::from("127.0.0.1:64636")); // TODO: Add a version for the secured address using jwt
 
         // Create a channel to notify the background thread to close
         let (sender, receiver) = mpsc::channel(512);
 
         // Spin out thread to monitor and restart vulcan, if requested
-        if vulcan_params.spawn {
+        /*if vulcan_params.spawn {
             VulcanThread::spawn(
                 receiver,
                 vulcan_params.path.unwrap_or_default(),
@@ -265,27 +283,87 @@ impl DmxInterface {
             .await;
 
         // Otherwise, just spin the background thread for communication
-        } else {
-            VulcanThread::no_spawn(receiver, address).await;
-        }
+        } else {*/
+        MinervaThread::no_spawn(receiver, address).await;
+        //}
 
         // Return the complete module
         Self { sender }
     }
 
-    /// A method to send a new dmx fade to the dmx controller
+    /// A method to send a new event to the game controller
     ///
     /// This method passes the request to the background thread for processing.
-    /// If the request fails, the error will be passed through the tracing library.
+    /// If the request fails, the error will be passed through the tracing library
+    /// from the background thread.
     ///
-    pub async fn play_fade(&mut self, fade: DmxFade) {
-        // Verify the range of the selected channel
-        if (fade.channel > DMX_MAX) | (fade.channel < 1) {
-            error!("Error with DMX playback: Selected DMX channel is out of range.");
-            return;
+    async fn cue_event(&self, event_id: ItemId) {
+        // Send the dmx fade to the background thread
+        self.sender.send(event_id).await.unwrap_or(());
+    }
+}
+
+/// A structure to hold and manipulate one or more Minerva Interfaces
+/// and access them by game id
+///
+pub struct MinervaHandler {
+    interface_map: HashMap<GameId, Vec<MinervaInterface>>, // a map of minerva interfaces
+}
+
+// Implement key functionality for the Minerva handler structure
+impl MinervaHandler {
+    /// A function to create a new instance of the Minerva handler
+    ///
+    pub async fn new(mut minerva_controllers: MinervaControllers) -> Self {
+        // Create an empty game map
+        let mut interface_map = HashMap::default();
+
+        // For each of the Minerva controllers, spin off a new interface
+        for params in minerva_controllers.drain(..) {
+            // Create a new interace for each one
+            let game_id = params.game_id.clone();
+            let interface = MinervaInterface::new(params).await;
+
+            // Add it to the map
+            interface_map.entry(game_id)
+            // Add it to an existing list of interfaces
+            .and_modify(|mut entry| { 
+                entry.push(interface);
+            // Or create a new one
+            }).or_insert_with(vec![interface]);
         }
 
-        // Send the dmx fade to the background thread
-        self.sender.send(fade).await.unwrap_or(());
+        // Return the complete module
+        Self { interface_map }
+    }
+
+    /// A method to send a new event to the game controller
+    ///
+    /// # Errors
+    /// 
+    /// If the specified game id does not have a matching controller, this
+    /// method will throw an error.
+    /// 
+    /// If the request fails to reach the controller, the error will be
+    /// passed through the tracing library.
+    ///
+    pub async fn cue_event(&mut self, game_id: GameId, event_id: ItemId) -> Result<()> {
+        // Verify that the game has at least one matching interface
+        match self.interface_map.entry(game_id) {
+            Occupied(interfaces) => {
+                // Send the event to each interface
+                for interface in interfaces.get().iter() {
+                    interface.cue_event(event_id).await;
+                }
+
+                // Indicate success
+                Ok(())
+            }
+            
+            // Otherwise, throw an error
+            _ => {
+                return Err(anyhow!("Game does not have any matching interface."));
+            }
+        }
     }
 }

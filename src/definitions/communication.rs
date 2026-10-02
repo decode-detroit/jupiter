@@ -27,89 +27,6 @@ use tokio::sync::{mpsc, oneshot};
 // Import warp features
 use warp::ws::Message;
 
-/// The stucture and methods to send updates to the player(s).
-///
-#[derive(Clone, Debug)]
-pub struct PlayerSend {
-    update_send: mpsc::Sender<Update>, // the line to pass updates to the player(s)
-}
-
-// Implement the key features of player send
-impl PlayerSend {
-    /// A function to create a new PlayerSend
-    ///
-    /// The function returns the PlayerSend structure and the interface
-    /// receive channel which will deliver the provided updates.
-    ///
-    pub fn new() -> (Self, mpsc::Receiver<Update>) {
-        // Create one or two new channels
-        let (update_send, update_recv) = mpsc::channel(512);
-
-        // Create and return the new items
-        (PlayerSend { update_send }, update_recv)
-    }
-
-    /// A method to send a player update. This method fails silently.
-    ///
-    pub async fn send(&self, update: Update) {
-        self.update_send.send(update).await.unwrap_or(());
-    }
-}
-
-/// An enum type to provide updates to the players
-///
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub enum Update {
-    /// A variant to provide the current scene and state of all statuses
-    #[serde(rename_all = "camelCase")]
-    CurrentSceneAndStatus {
-        current_scene: ItemId,
-        current_status: CurrentStatus,
-    },
-
-    /// A variant to post a current event to the status bar
-    #[serde(rename_all = "camelCase")]
-    Notify { message: String },
-
-    /// A variant to indicate that the entire interface should be refreshed
-    #[serde(rename_all = "camelCase")]
-    RefreshAll,
-
-    /// A variant indicating the current scene should be refreshed with
-    /// the new scene.
-    #[serde(rename_all = "camelCase")]
-    UpdateScene { current_scene: ItemId },
-
-    /// A variant to update the state of a partiular status.
-    #[serde(rename_all = "camelCase")]
-    UpdateStatus {
-        status_id: ItemPair, // the status to update
-        new_state: ItemPair, // the new state of the status
-    },
-
-    /// A variant indicating that the system notifications should be updated.
-    #[serde(rename_all = "camelCase")]
-    UpdateNotifications { notifications: Vec<String> },
-
-    /// A variant indicating that the event timeline should be updated.
-    #[serde(rename_all = "camelCase")]
-    UpdateTimeline { events: Vec<UpcomingEvent> },
-}
-
-// Implement from<Update> for Message)
-impl From<Update> for Result<Message, warp::Error> {
-    fn from(update: Update) -> Self {
-        // Try to serialize the update
-        match serde_json::to_string(&update) {
-            Ok(string) => Ok(Message::text(string)),
-
-            // On failure, return an empty string (unable to convert the error)
-            _ => Ok(Message::text("")),
-        }
-    }
-}
-
 /// The stucture and methods to send requests to jupiter
 ///
 #[derive(Clone, Debug)]
@@ -151,8 +68,7 @@ pub struct WebRequest {
 
 /// An enum to carry requests from the player(s)
 ///
-#[derive(Debug, Clone, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
+#[derive(Debug, Clone)]
 pub enum Request {
     /// A special variant to close the program.
     Close,
@@ -163,8 +79,11 @@ pub enum Request {
     /// A variant to cue an event for a particular puzzle
     CueEvent { player_id: PlayerId, unique_puzzle: UniquePuzzle, event_id: ItemId },
 
-    /// A variant to get the status of a player
-    PlayerStatus { player_id: PlayerId },
+    /// A variant to get the current scores for a player
+    PlayerScores { player_id: PlayerId },
+
+    /// A variant to request updates whenever a player's score changes
+    PlayerScoreUpdates { player_id: PlayerId, sender: mpsc::Sender<AllScores> },
 
     /// A special variant to close the program, and attempt to shut down the computer
     Shutdown,
@@ -193,12 +112,13 @@ pub struct Reply {
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ReplyData {
-    /// A variant for 
-    Placeholder,
-
     /// A variant for replies with a message
     #[serde(rename_all = "camelCase")]
     Message(String),
+
+    /// A variant for replies with player scores
+    #[serde(rename_all = "camelCase")]
+    Scores(AllScores),
 }
 
 // Implement key features of the web reply

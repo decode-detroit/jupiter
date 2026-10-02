@@ -49,7 +49,7 @@ pub struct Database {
 impl Database {
     /// A method to create a new instance of the database by loading the config
     ///
-    pub async fn new(config_file: &str) -> Result<Self> {
+    pub async fn new(config_file: &str) -> Result<(Self, MinervaControllers)> {
         // Try to load the configuration in the current directory, if it exists
         let mut path = env::current_dir()?;
 
@@ -71,14 +71,16 @@ impl Database {
         let player_status = PlayerHandler::new(config.get_identifier(), config.get_server_location()).await;
 
         // Create the new puzzle status handler
-        let puzzle_status = PuzzleHandler::new(config.puzzle_map);
+        let puzzle_status = PuzzleHandler::new(config.get_game_map());
 
         // Return the completed database
-        Ok(Database {
+        let minerva_controllers = config.get_minerva_controllers();
+        Ok((Database {
             config,
             player_status,
             puzzle_status,
-        })
+        },
+        minerva_controllers))
     }
 
     /// A method to create a new player
@@ -95,15 +97,25 @@ impl Database {
     /// Only one user can be subscribed to a player at a time. Adding a new
     /// subscriber replaces the old one.
     /// 
-    pub async fn player_changes(&mut self, player_id: PlayerId) -> mpsc::Receiver<PlayerDetail> {
-        // Create the matched channel
-        let (sender, receiver) = mpsc::channel(128);
-
+    pub fn add_listener(&mut self, player_id: PlayerId, sender: mpsc::Sender<AllScores>) {
         // Pass the sender to the player status handler
-        self.player_status.add_listener(player_id, sender);
+        self.player_status.add_listener(player_id, sender)
+    }
 
-        // Return the receiving line
-        receiver
+    /// A method to retrieve the current scores for this player
+    /// 
+    pub async fn get_all_scores(&mut self, player_id: PlayerId) -> Result<AllScores> {
+        // Retrieve the player scores
+        self.player_status.get_all_scores(player_id).await
+    }
+
+    /// A method to reset a particular puzzle. This method should
+    /// only be used if you know the puzzle was available to start,
+    /// but Minerva could not be reached.
+    /// 
+    pub async fn reset_puzzle(&mut self, unique_puzzle: UniquePuzzle) -> Result<()> {
+        // Try to reset the puzzle to available
+        self.puzzle_status.reset_puzzle(unique_puzzle)
     }
 
     /// A method to start a particular puzzle
@@ -133,7 +145,7 @@ impl Database {
         // Verify that this player is the current player
         self.puzzle_status.verify_current_player(unique_puzzle, player_id)?;
         
-        // TODO Retuan a line tracking puzzle updates
+        // TODO Return a line tracking puzzle updates
         Ok(())
     }
 }

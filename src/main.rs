@@ -25,6 +25,7 @@
 #[macro_use]
 mod definitions;
 mod database;
+mod minerva_interface;
 mod web_interface;
 
 // Import crate definitions
@@ -32,6 +33,7 @@ use crate::definitions::*;
 
 // Import other structures into this module
 use self::database::Database;
+use self::minerva_interface::MinervaHandler;
 use self::web_interface::WebInterface;
 
 // Import Tokio features
@@ -97,26 +99,26 @@ struct Arguments {
 ///
 struct Jupiter {
     jupiter_recv: mpsc::Receiver<WebRequest>,
-    update_send: PlayerSend,
     database: Database,
+    minerva_handler: MinervaHandler,
 }
 
 // Implement the Jupiter functionality
 impl Jupiter {
     /// A method to return a new instance of Jupiter
     /// 
-    async fn new(config_file: &str) -> Result<(Self, JupiterSend, mpsc::Receiver<Update>)> {
+    async fn new(config_file: &str) -> Result<(Self, JupiterSend)> {
         // Create the jupiter request send and receive
         let (jupiter_send, jupiter_recv) = JupiterSend::new();
 
-        // Create the player update send and receive
-        let (update_send, update_recv) = PlayerSend::new();
-
         // Create the puzzle, game and player database from the configuration
-        let database = Database::new(config_file).await?;
+        let (database, minerva_controllers) = Database::new(config_file).await?;
+
+        // Create the Minerva connections, as needed
+        let minerva_handler = MinervaHandler::new(minerva_controllers).await;
 
         // Return the new instance with other communication elements
-        Ok((Jupiter { jupiter_recv, update_send, database }, jupiter_send, update_recv ))
+        Ok((Jupiter { jupiter_recv, database, minerva_handler }, jupiter_send ))
     }
     
     /// A function to setup the logging configuration
@@ -185,7 +187,7 @@ impl Jupiter {
         let _guard = Jupiter::setup_logging(arguments.log_level);
 
         // Create the new Jupiter instance
-        let (mut jupiter, jupiter_send, update_recv) = match Jupiter::new(&arguments.config).await {
+        let (mut jupiter, jupiter_send) = match Jupiter::new(&arguments.config).await {
             Ok(tuple) => tuple,
             Err(err) => {
                 error!("Unable to initialize Jupiter: {}", err);
@@ -196,7 +198,6 @@ impl Jupiter {
         // Launch the web interface (creates its own threads)
         WebInterface::launch(
             jupiter_send,
-            update_recv,
             arguments.address,
             arguments.cors_allowed_addr,
             arguments.cert_path,
@@ -252,16 +253,37 @@ impl Jupiter {
 
                     // Cue an event for the selected game and puzzle
                     Request::CueEvent { player_id, unique_puzzle, event_id } => {
-                        // FIXME Implement this variant
-                        request.reply_to.send(Reply::failure("Not implemented.")).unwrap_or(());
+                        // Verify the current player
+                        if let Err(err) = self.database.verify_current_player(&unique_puzzle, &player_id).await {
+                            request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(());
+                        
+                        // Otherwise, try to forward the event
+                        } else {
+                            if self.minerva_handler.cue_event(unique_puzzle.game_id, event_id).await.is_ok() {
+                                request.reply_to.send(Reply::success()).unwrap_or(());
+                            
+                            // Notify the user of failure
+                            } else {
+                                // Notify of the failure
+                                request.reply_to.send(Reply::failure(format!("Unable to contact Minerva."))).unwrap_or(());
+                            }
+                        }
                     }
 
-                    // Subscribe the player to any updates to this player status
-                    Request::PlayerStatus { player_id } => {
-                        let receiver = self.database.player_changes(player_id).await;
+                    // Get the current player scores
+                    Request::PlayerScores { player_id } => {
+                        match self.database.get_all_scores(player_id).await {
+                            Ok(scores) => request.reply_to.send(Reply { is_valid: true, data: ReplyData::Scores(scores) }).unwrap_or(()),
+                            Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
+                        }
+                    }
+
+                    // Subscribe the player to any updates to this player scores
+                    Request::PlayerScoreUpdates { player_id, sender } => {
+                        self.database.add_listener(player_id, sender);
                         
-                        // Forward the listening line to the web interface
-                        request.reply_to.send(Reply::success()).unwrap_or(()); // FIXME
+                        // Indicate success
+                        request.reply_to.send(Reply::success()).unwrap_or(());
                     }
 
                     // Execute the shutdown request
@@ -272,8 +294,23 @@ impl Jupiter {
 
                     // Start the selected puzzle if it is available
                     Request::StartPuzzle { player_id, unique_puzzle } => {
-                        match self.database.start_puzzle(unique_puzzle, player_id).await {
-                            Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
+                        match self.database.start_puzzle(unique_puzzle.clone(), player_id).await {
+                            // If the puzzle was started by this player
+                            Ok(starting_event) => {
+                                // Update the puzzle state using the starting event
+                                if self.minerva_handler.cue_event(unique_puzzle.game_id.clone(), starting_event).await.is_ok() {
+                                    request.reply_to.send(Reply::success()).unwrap_or(());
+                                
+                                // On failure, reset the puzzle
+                                } else {
+                                    // Ignore the result
+                                    let _ = self.database.reset_puzzle(unique_puzzle.clone());
+
+                                    // Notify of the failure
+                                    request.reply_to.send(Reply::failure(format!("Unable to contact Minerva."))).unwrap_or(());
+                                }
+                                
+                            },
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
                         }
                     }

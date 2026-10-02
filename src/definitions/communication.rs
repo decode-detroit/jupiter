@@ -24,35 +24,35 @@ use crate::definitions::*;
 // Import Tokio features
 use tokio::sync::{mpsc, oneshot};
 
-// Import warp features
-use warp::ws::Message;
+// Import FNV HashMap
+use fnv::FnvHashMap;
 
 /// The stucture and methods to send requests to jupiter
 ///
 #[derive(Clone, Debug)]
 pub struct JupiterSend {
-    web_send: mpsc::Sender<WebRequest>, // the mpsc sending line to pass player requests
+    send: mpsc::Sender<WebRequest>, // the mpsc sending line to pass player requests
 }
 
-// Implement the key features of the web send struct
+// Implement the key features of the jupiter send struct
 impl JupiterSend {
-    /// A function to create a new WebSend
+    /// A function to create a new JupiterSend
     ///
-    /// The function returns the the Web Sent structure and the system
+    /// The function returns the the JupiterSend structure and the system
     /// receive channel which will return the provided updates.
     ///
     pub fn new() -> (Self, mpsc::Receiver<WebRequest>) {
         // Create the new channel
-        let (web_send, receive) = mpsc::channel(512);
+        let (send, receive) = mpsc::channel(512);
 
         // Create and return both new items
-        (JupiterSend { web_send }, receive)
+        (Self { send }, receive)
     }
 
     /// A method to send a web request. This method fails silently.
     ///
     pub async fn send(&self, reply_to: oneshot::Sender<Reply>, request: Request) {
-        self.web_send
+        self.send
             .send(WebRequest { reply_to, request })
             .await
             .unwrap_or(());
@@ -150,3 +150,78 @@ impl Reply {
         self.is_valid
     }
 }
+
+/// The stucture and methods to send updates from Minerva
+///
+#[derive(Clone, Debug)]
+pub struct MinervaSend {
+    send: mpsc::Sender<GameUpdate>, // the mpsc sending line for game updates
+}
+
+// Implement the key features of the minerva send struct
+impl MinervaSend {
+    /// A function to create a new MinervaSend
+    ///
+    /// The function returns the the MinervaSend structure and the system
+    /// receive channel which will return the provided updates.
+    ///
+    pub fn new() -> (Self, mpsc::Receiver<GameUpdate>) {
+        // Create the new channel
+        let (send, receive) = mpsc::channel(512);
+
+        // Create and return both new items
+        (Self { send }, receive)
+    }
+
+    /// A method to send a game update. This method fails silently.
+    ///
+    pub async fn send(&self, game_id: GameId, update: MinervaUpdate) {
+        self.send
+            .send(GameUpdate { game_id, update })
+            .await
+            .unwrap_or(());
+    }
+}
+
+/// A structure for carrying updates about a game
+///
+pub struct GameUpdate {
+    pub game_id: GameId, // the game that this Minerva instance is running
+    pub update: MinervaUpdate, // the update
+}
+
+
+/// An enum type to receive updates from Minerva. These updates contain only
+/// the minimal information needed to follow operations as they progress.
+///
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum MinervaUpdate {
+    /// A variant to receive a current event id
+    #[serde(rename_all = "camelCase")]
+    CurrentEvent {
+        event: ItemId, // current event id
+    },
+
+    /// A variant to receive the current scene and state of all statuses
+    #[serde(rename_all = "camelCase")]
+    CurrentSceneAndStatus {
+        current_scene: ItemId,
+        current_status: CurrentStatus,
+    },
+
+    /// A variant indicating a change in the current scene
+    #[serde(rename_all = "camelCase")]
+    UpdateScene { current_scene: ItemId },
+
+    /// A variant to update the state of a partiular status
+    #[serde(rename_all = "camelCase")]
+    UpdateStatus {
+        status_id: ItemId, // the status to update
+        new_state: ItemId, // the new state of the status
+    },
+}
+
+/// A type to share the current status of the game
+///
+pub type CurrentStatus = FnvHashMap<u32, u32>;

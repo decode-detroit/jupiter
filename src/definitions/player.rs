@@ -128,7 +128,7 @@ mod tests {
 
     // Test creation and modification of a player detail
     #[test]
-    fn player() {
+    fn missing_tests() {
         unimplemented!();
     }
 }

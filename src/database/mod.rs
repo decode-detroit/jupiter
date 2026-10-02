@@ -148,5 +148,17 @@ impl Database {
         // TODO Return a line tracking puzzle updates
         Ok(())
     }
+
+    /// A Method to update the current state of a puzzle, if it exists
+    /// 
+    pub async fn change_state(&mut self, unique_puzzle: UniquePuzzle, new_state: ItemId) {
+        // Try to make the change
+        if let Some((player_id, score)) = self.puzzle_status.change_state(unique_puzzle.clone(), new_state) {
+            // Update the player's score
+            if let Err(err) = self.player_status.set_score(player_id, unique_puzzle, score).await {
+                error!("Unable to update player score.");
+            }
+        }
+    }
 }
 

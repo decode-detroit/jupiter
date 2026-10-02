@@ -99,6 +99,7 @@ struct Arguments {
 ///
 struct Jupiter {
     jupiter_recv: mpsc::Receiver<WebRequest>,
+    minerva_recv: mpsc::Receiver<GameUpdate>,
     database: Database,
     minerva_handler: MinervaHandler,
 }
@@ -111,14 +112,17 @@ impl Jupiter {
         // Create the jupiter request send and receive
         let (jupiter_send, jupiter_recv) = JupiterSend::new();
 
+        // Create the minerva update send and receive
+        let (minerva_send, minerva_recv) = MinervaSend::new();
+
         // Create the puzzle, game and player database from the configuration
         let (database, minerva_controllers) = Database::new(config_file).await?;
 
         // Create the Minerva connections, as needed
-        let minerva_handler = MinervaHandler::new(minerva_controllers).await;
+        let minerva_handler = MinervaHandler::new(minerva_controllers, minerva_send).await;
 
         // Return the new instance with other communication elements
-        Ok((Jupiter { jupiter_recv, database, minerva_handler }, jupiter_send ))
+        Ok((Self { jupiter_recv, minerva_recv, database, minerva_handler }, jupiter_send ))
     }
     
     /// A function to setup the logging configuration
@@ -233,9 +237,28 @@ impl Jupiter {
     async fn run_once(&mut self) -> Result<(), bool> {
         // Check for updates on any line
         tokio::select! {
-            // FIXME updates from the internal system
+            // Update from Minerva
+            Some(update) = self.minerva_recv.recv() => {
+                // Match the update type
+                match update.update {
+                    // Possibly update the state of a puzzle
+                    MinervaUpdate::UpdateStatus { status_id, new_state } => {
+                        // Compose the unique puzzle
+                        let unique_puzzle = UniquePuzzle {
+                            game_id: update.game_id,
+                            puzzle_id: status_id, // may not actually be a puzzle
+                        };
 
-            // Updates from the web
+                        // Try to update the state of that puzzle
+                        self.database.change_state(unique_puzzle, new_state).await;
+                    },
+
+                    // Ignore all others
+                    _ => (),
+                }
+            }
+
+            // Requests from the web
             Some(request) = self.jupiter_recv.recv() => {
                 // Match the request type
                 match request.request {
@@ -247,8 +270,10 @@ impl Jupiter {
 
                     // Create a new player id (or do nothing, if the player exists)
                     Request::CreatePlayer { player_id } => {
-                        self.database.create_player(player_id).await;
-                        request.reply_to.send(Reply::success()).unwrap_or(());
+                        match self.database.create_player(player_id).await {
+                            Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
+                            Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
+                        }
                     }
 
                     // Cue an event for the selected game and puzzle

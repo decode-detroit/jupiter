@@ -201,8 +201,8 @@ mod tests {
     #[test]
     fn compare_player_ids() {
         // Create several ids
-        let id = PlayerId::new("player11").unwrap();
-        let same_id = PlayerId::new("PLAYER11111").unwrap();
+        let id = PlayerId::new("player1111").unwrap();
+        let same_id = PlayerId::new("PLAYER1111111").unwrap();
         let different_id = PlayerId::new("player12").unwrap();
 
         // Compare the ids

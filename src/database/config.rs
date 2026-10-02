@@ -76,7 +76,7 @@ impl Config {
         }
 
         // Try to parse the configuration file
-        let yaml_config: YamlConfig = match serde_yaml::from_str(config_string.as_str()) {
+        let yaml_config: YamlConfig = match serde_yaml::from_str(&config_string) {
             Ok(config) => config,
             Err(error) => {
                 error!("Unable to parse configuration file: {}.", error);

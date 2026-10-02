@@ -22,7 +22,7 @@ use crate::definitions::*;
 
 // Import standard library features
 use std::collections::HashMap;
-use std::collections::hash_map::Entry::Occupied;
+use std::collections::hash_map::Entry::{Occupied, Vacant};
 
 // Import standard library features
 use std::path::PathBuf;
@@ -32,8 +32,12 @@ use tokio::process::Command;
 use tokio::sync::mpsc;
 use tokio::time::{Duration, sleep};
 
-// Import reqwest elements
+// Import reqwest and websocket elements
 use reqwest::Client;
+use reqwest_websocket::{Upgrade, Message};
+
+// Import futures util features
+use futures_util::StreamExt;
 
 /// A structure to define a cue event for communicating with Minerva
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
@@ -194,7 +198,7 @@ impl MinervaThread {
     }*/
 
     /// Spawn the monitoring thread only
-    async fn no_spawn(mut receiver: mpsc::Receiver<ItemId>, address: String) {
+    async fn no_spawn(mut receiver: mpsc::Receiver<ItemId>, address: String, game_id: GameId, minerva_send: MinervaSend) {
         // Notify that the background process is starting
         info!("Connecting to Minerva Game controller ...");
 
@@ -211,6 +215,8 @@ impl MinervaThread {
         };
 
         // Spawn a background thread to communicate
+        let client_clone = client.clone();
+        let address_clone = address.clone();
         tokio::spawn(async move {
             // Run indefinitely or until the line is closed
             loop {
@@ -247,8 +253,51 @@ impl MinervaThread {
             }
         });
 
-        // FIXME create a listening line for events and tag with the game id
+        // Request a websocket to listen for status changes from Minerva
+        let response = match client_clone.get(format!("http://{}/listen", address_clone)).upgrade().send().await {
+            Ok(response) => response,
+            Err(err) => {
+                error!("Unable to listen to Minerva with id {}: {}", game_id, err);
+                return;
+            }
+        };
 
+        // Try to create the new websocket
+        let mut websocket = match response.into_websocket().await {
+            Ok(socket) => socket,
+            Err(err) => {
+                error!("Unable to listen to Minerva with id {}: {}", game_id, err);
+                return;
+            }
+        };
+
+        // Spawn another thread to receive, process, and forward updates
+        tokio::spawn(async move {
+            // Loop and forward messages until an error is encountered
+            while let Some(result) =  websocket.next().await {
+                if let Ok(message) = result {
+                    // Interpret string messages
+                    if let Message::Text(string) = message {
+                        // Try to serialize the message into an update
+                        if let Ok(update) = serde_yaml::from_str::<MinervaUpdate>(&string) {
+                            // Send the update to Jupiter
+                            minerva_send.send(game_id.clone(), update).await;
+                        } else {
+                            error!("Unable to parse message from Minerva id {}", game_id.clone());
+                        }
+                    
+                    // Warn that we got an invalid message type
+                    } else {
+                        error!("Received an invalid message type from Minerva id {}", game_id.clone());
+                    }
+
+                // Otherwise, leave the loop
+                } else {
+                    error!("Lost connection to Minerva id {}", game_id);
+                    break;
+                }
+            }   
+        });
     }
 }
 
@@ -262,7 +311,7 @@ struct MinervaInterface {
 impl MinervaInterface {
     /// A function to create a new instance of the Minerva interface
     ///
-    async fn new(minerva_params: MinervaParams) -> Self {
+    async fn new(minerva_params: MinervaParams, minerva_send: MinervaSend) -> Self {
         // Copy the specified address or use the default
         let address = minerva_params
             .address
@@ -284,7 +333,7 @@ impl MinervaInterface {
 
         // Otherwise, just spin the background thread for communication
         } else {*/
-        MinervaThread::no_spawn(receiver, address).await;
+        MinervaThread::no_spawn(receiver, address, minerva_params.game_id, minerva_send).await;
         //}
 
         // Return the complete module
@@ -314,23 +363,28 @@ pub struct MinervaHandler {
 impl MinervaHandler {
     /// A function to create a new instance of the Minerva handler
     ///
-    pub async fn new(mut minerva_controllers: MinervaControllers) -> Self {
+    pub async fn new(mut minerva_controllers: MinervaControllers, minerva_send: MinervaSend) -> Self {
         // Create an empty game map
-        let mut interface_map = HashMap::default();
+        let mut interface_map: HashMap<GameId, Vec<MinervaInterface>> = HashMap::default();
 
         // For each of the Minerva controllers, spin off a new interface
         for params in minerva_controllers.drain(..) {
             // Create a new interace for each one
             let game_id = params.game_id.clone();
-            let interface = MinervaInterface::new(params).await;
+            let interface = MinervaInterface::new(params, minerva_send.clone()).await;
 
             // Add it to the map
-            interface_map.entry(game_id)
-            // Add it to an existing list of interfaces
-            .and_modify(|mut entry| { 
-                entry.push(interface);
-            // Or create a new one
-            }).or_insert_with(vec![interface]);
+            match interface_map.entry(game_id) {
+                // Add it to an existing list of interfaces
+                Occupied(mut entry) => {
+                    entry.get_mut().push(interface);
+                }
+
+                // Or create a new list and add it
+                Vacant(entry) => {
+                    entry.insert(vec![interface]);
+                }
+            }
         }
 
         // Return the complete module

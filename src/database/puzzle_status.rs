@@ -196,7 +196,7 @@ mod tests {
 
     // Test getting and modifying a status
     #[tokio::test]
-    async fn puzzle_handler() {
+    async fn missing_tests() {
         unimplemented!();
     }
 }

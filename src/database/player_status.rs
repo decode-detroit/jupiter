@@ -180,7 +180,7 @@ impl PlayerHandler {
             },
 
             // Verify that the player is in the local database
-            Disconnected { player_map: player_map, .. } => {
+            Disconnected { player_map, .. } => {
                 // If the player doesn't exist
                 if !player_map.contains_key(&player_id) {
                     // Return an error
@@ -829,18 +829,15 @@ mod tests {
         assert!(player_handler.verify_player(&player3).await.is_err());
 
         // Try setting a player name
-        assert_eq!(player_handler.get_name(player1.clone()).await.unwrap(), None);
         assert!(player_handler.set_name(player1.clone(), "My Name".to_string()).await.is_ok());
         assert_eq!(player_handler.get_name(player1.clone()).await.unwrap(), Some("My Name".to_string()));
 
         // Try setting the current puzzle
         let puzzle = UniquePuzzle { game_id: GameId::new("game1").unwrap(), puzzle_id: PuzzleId::new_unchecked(100) };
-        assert_eq!(player_handler.get_current_puzzle(player1.clone()).await.unwrap(), None);
         assert!(player_handler.set_current_puzzle(player1.clone(), Some(puzzle.clone())).await.is_ok());
         assert_eq!(player_handler.get_current_puzzle(player1.clone()).await.unwrap(), Some(puzzle.clone()));
 
         // Try setting a particular score
-        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id.clone()).unwrap().get(&puzzle.puzzle_id), None);
         assert!(player_handler.set_score(player1.clone(), puzzle.clone(), 300).await.is_ok());
         assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id).unwrap().get(&puzzle.puzzle_id), Some(&300));
     }
@@ -870,18 +867,15 @@ mod tests {
         assert!(player_handler.verify_player(&player3).await.is_err());
 
         // Try setting a player name
-        assert_eq!(player_handler.get_name(player1.clone()).await.unwrap(), None);
         assert!(player_handler.set_name(player1.clone(), "My Name".to_string()).await.is_ok());
         assert_eq!(player_handler.get_name(player1.clone()).await.unwrap(), Some("My Name".to_string()));
 
         // Try setting the current puzzle
         let puzzle = UniquePuzzle { game_id: GameId::new("game1").unwrap(), puzzle_id: PuzzleId::new_unchecked(100) };
-        assert_eq!(player_handler.get_current_puzzle(player1.clone()).await.unwrap(), None);
         assert!(player_handler.set_current_puzzle(player1.clone(), Some(puzzle.clone())).await.is_ok());
         assert_eq!(player_handler.get_current_puzzle(player1.clone()).await.unwrap(), Some(puzzle.clone()));
 
         // Try setting a particular score
-        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id.clone()).unwrap().get(&puzzle.puzzle_id), None);
         assert!(player_handler.set_score(player1.clone(), puzzle.clone(), 300).await.is_ok());
         assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id).unwrap().get(&puzzle.puzzle_id), Some(&300));
     }

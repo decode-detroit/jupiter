@@ -28,7 +28,6 @@ pub const DEFAULT_ADDRESS: &str = "127.0.0.1:58748";
 
 // Define submodules
 mod communication;
-mod event;
 mod ids;
 mod item;
 mod minerva;
@@ -46,7 +45,6 @@ pub use serde::{Deserialize, Serialize};
 
 // Reexport all the definitions from the submodules
 pub use self::communication::*;
-pub use self::event::*;
 pub use self::ids::*;
 pub use self::item::*;
 pub use self::minerva::*;

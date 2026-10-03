@@ -134,6 +134,7 @@ impl Config {
     /// or the provided file was not usable. This usually indicates a problem
     /// the provided file type.
     ///
+    #[allow(dead_code)]
     pub async fn to_config(&self, mut config_file: File) {
         // Create a YAML config from the elements
         let yaml_config = YamlConfig {

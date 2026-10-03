@@ -27,6 +27,8 @@ use std::fmt;
 // Import Serde macros
 use serde::{Deserialize, Serialize};
 
+// Define module constants
+#[allow(dead_code)]
 pub const UNIVERSAL_IDENTIFIER: u32 = 0;
 
 /// The Jupiter instance identifier. Instances with the same identifier will
@@ -135,6 +137,7 @@ impl PlayerId {
 
     /// A method to return the id of the player as a string
     ///
+    #[allow(dead_code)]
     pub fn id(&self) -> String {
         self.id.clone()
     }

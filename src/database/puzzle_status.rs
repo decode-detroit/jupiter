@@ -47,6 +47,7 @@ impl PuzzleHandler {
     /// This method will raise an error if the specified game or puzzle does
     /// not exist.
     /// 
+    #[allow(dead_code)]
     pub fn is_available(&mut self, unique_puzzle: UniquePuzzle) -> bool {
         // Try to look up the game
         match self.game_map.entry(unique_puzzle.game_id) {

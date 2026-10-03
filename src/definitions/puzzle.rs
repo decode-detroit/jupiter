@@ -28,6 +28,7 @@ use std::collections::HashMap;
 use fnv::FnvHashMap; // better for small keys, like PuzzleId
 
 // Define module constants
+#[allow(dead_code)]
 pub const STARTING_SCORE: u32 = 0_u32; // the starting score for a puzzle
 
 /// A type definition to store all of the games
@@ -44,6 +45,7 @@ pub struct Game {
 // Implement key features for the Game struct
 impl Game {
     /// A method to generate an empty score map for this game
+    #[allow(dead_code)]
     pub fn starting_scores(&self) -> GameScores {
         // Create score of zero for every puzzle
         let mut scores = GameScores::default();

@@ -39,7 +39,6 @@ use tokio::fs::File;
 
 /// A struct to load and hold the player, game, and puzzle databases
 pub struct Database {
-    config: Config, // the configuration for this instance of Jupiter
     player_status: PlayerHandler, // handler to manage status of the players
     puzzle_status: PuzzleHandler, // handler to manage status of the puzzles
 }
@@ -75,7 +74,6 @@ impl Database {
         // Return the completed database
         let minerva_controllers = config.get_minerva_controllers();
         Ok((Database {
-            config,
             player_status,
             puzzle_status,
         },
@@ -155,7 +153,7 @@ impl Database {
         if let Some((player_id, score)) = self.puzzle_status.change_state(unique_puzzle.clone(), new_state) {
             // Update the player's score
             if let Err(err) = self.player_status.set_score(player_id, unique_puzzle, score).await {
-                error!("Unable to update player score.");
+                error!("Unable to update player score: {}", err);
             }
         }
     }

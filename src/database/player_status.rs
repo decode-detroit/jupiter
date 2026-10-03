@@ -111,6 +111,7 @@ impl PlayerHandler {
     /// A method to indicate whether the player handler is connected to
     /// the Redis database
     /// 
+    #[allow(dead_code)]
     pub fn is_connected(&self) -> bool {
         match self {
             Connected { .. } => true,
@@ -228,6 +229,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn set_name(&mut self, player_id: PlayerId, name: String) -> Result<()> {
         // Match the connection type
         match self {
@@ -283,6 +285,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn set_email(&mut self, player_id: PlayerId, email: String) -> Result<()> {
         // Match the connection type
         match self {
@@ -338,6 +341,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn set_current_puzzle(&mut self, player_id: PlayerId, current_puzzle: Option<UniquePuzzle>) -> Result<()> {
         // Match the connection type
         match self {
@@ -460,6 +464,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn set_scores(&mut self, player_id: PlayerId, game_id: GameId, game_scores: GameScores) -> Result<()> {
         // Match the connection type
         match self {
@@ -527,6 +532,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn clear_pii(&mut self, player_id: PlayerId) -> Result<()> {
         // Match the connection type
         match self {
@@ -582,6 +588,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn get_name(&mut self, player_id: PlayerId) -> Result<Option<String>> {
         // Match the connection type
         match self {
@@ -625,6 +632,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn get_email(&mut self, player_id: PlayerId) -> Result<Option<String>> {
         // Match the connection type
         match self {
@@ -668,6 +676,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn get_current_puzzle(&mut self, player_id: PlayerId) -> Result<Option<UniquePuzzle>> {
         // Match the connection type
         match self {
@@ -754,6 +763,7 @@ impl PlayerHandler {
     /// FIXME These functions are lots of boilerplate and could probably
     /// be easily condensed into a macro or other syntactic sugar
     /// 
+    #[allow(dead_code)]
     pub async fn get_detail(&mut self, player_id: PlayerId) -> Result<PlayerDetail> {
         // Match the connection type
         match self {

@@ -30,7 +30,7 @@ use self::web_definitions::*;
 // Import Tokio and warp features
 use tokio::fs::read;
 use tokio::sync::{mpsc, oneshot};
-use warp::ws::{Message, WebSocket};
+use warp::ws::WebSocket;
 use warp::{Filter, http};
 
 // Import stream-related features

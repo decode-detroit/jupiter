@@ -36,7 +36,6 @@ use std::env;
 
 // Import Tokio features
 use tokio::fs::File;
-use tokio::sync::mpsc;
 
 /// A struct to load and hold the player, game, and puzzle databases
 pub struct Database {
@@ -97,9 +96,9 @@ impl Database {
     /// Only one user can be subscribed to a player at a time. Adding a new
     /// subscriber replaces the old one.
     /// 
-    pub fn add_listener(&mut self, player_id: PlayerId, sender: mpsc::Sender<AllScores>) {
+    pub async fn add_listener(&mut self, player_id: PlayerId, sender: SenderWithExpiration) -> Result<()> {
         // Pass the sender to the player status handler
-        self.player_status.add_listener(player_id, sender)
+        self.player_status.add_listener(player_id, sender).await
     }
 
     /// A method to retrieve the current scores for this player

@@ -30,8 +30,8 @@ use std::collections::hash_map::Entry::Occupied;
 // Imprt redis client library
 use redis::AsyncCommands;
 
-// Import tokio features
-use tokio::sync::mpsc;
+// Import JWT features
+use jsonwebtoken as jwt;
 
 /// A structure which holds a reference to the Redis server (if it exists) and
 /// syncronizes local data to and from the server.
@@ -47,13 +47,13 @@ pub enum PlayerHandler {
     Connected {
         identifier: Identifier, // the optional identifier for this instance
         connection: redis::aio::MultiplexedConnection, // the Redis connection, if it exists
-        player_listeners: HashMap<PlayerId, mpsc::Sender<AllScores>>, // a map of player ids and sending lines to update the user
+        player_listeners: HashMap<PlayerId, SenderWithExpiration>, // a map of player ids and sending lines to update the user
     },
 
     /// A variant without any connection to the Redis server
     Disconnected {
         player_map: PlayerMap, // the local copy of the player status
-        player_listeners: HashMap<PlayerId, mpsc::Sender<AllScores>>, // a map of player ids and sending lines to update the user
+        player_listeners: HashMap<PlayerId, SenderWithExpiration>, // a map of player ids and sending lines to update the user
     }, // identifier is irrelevant as the data is internal
 }
 
@@ -195,17 +195,27 @@ impl PlayerHandler {
 
     /// A method to add a listening line for changes to a player
     ///
+    /// # Errors
+    /// 
+    /// This ethod will return an error if the player does not exist
+    /// 
     /// # Note
     /// 
     /// Only one user can be subscribed to a player at a time. Adding a new
     /// subscriber replaces the old one.
     /// 
-    pub fn add_listener(&mut self, player_id: PlayerId, sender: mpsc::Sender<AllScores>) {
+    pub async fn add_listener(&mut self, player_id: PlayerId, sender: SenderWithExpiration) -> Result<()> {
+        // Verify that the player exists
+        self.verify_player(&player_id).await?;
+
         // Add the listening line to the corresponding hashmap
         match self {
             Connected { player_listeners, .. } => player_listeners.insert(player_id, sender),
             Disconnected { player_listeners, .. } => player_listeners.insert(player_id, sender),
         };
+
+        // Indicate success
+        Ok(())
     }
 
     /// A method to set or update the player name in player detail
@@ -780,19 +790,37 @@ impl PlayerHandler {
     /// A helper method to send score update to any subscribed users for a
     /// particular player. This method failes silently.
     /// 
-    fn send_score_updates(&self, player_id: &PlayerId, new_scores: AllScores) {
+    fn send_score_updates(&mut self, player_id: &PlayerId, new_scores: AllScores) {
         // Switch by connection type
         match self {
             Connected { player_listeners, .. } => {
-                // If there is a matching line in the hash map
-                if let Some(sender) = player_listeners.get(player_id) {
-                    let _ = sender.try_send(new_scores); // Ignore any failure
+                // Check to see if there is a listener for this player id
+                if let Occupied(listener) = player_listeners.entry(player_id.clone()) {
+                    // Check if the listener has expired
+                    let expiration = listener.get().expiration;
+                    if expiration == 0 && expiration > jwt::get_current_timestamp() {
+                        // If not, send the score update
+                        let _ = listener.get().socket.try_send(new_scores.into());
+                    
+                    // If so, remove it
+                    } else {
+                        listener.remove();
+                    }
                 }
             }
             Disconnected { player_listeners, .. } => {
-                // If there is a matching line in the hash map
-                if let Some(sender) = player_listeners.get(player_id) {
-                    let _ = sender.try_send(new_scores); // Ignore any failure
+                // Check to see if there is a listener for this player id
+                if let Occupied(listener) = player_listeners.entry(player_id.clone()) {
+                    // Check if the listener has expired
+                    let expiration = listener.get().expiration;
+                    if expiration == 0 && expiration > jwt::get_current_timestamp() {
+                        // If not, send the score update
+                        let _ = listener.get().socket.try_send(new_scores.into());
+                    
+                    // If so, remove it
+                    } else {
+                        listener.remove();
+                    }
                 }
             }
         }
@@ -839,7 +867,7 @@ mod tests {
 
         // Try setting a particular score
         assert!(player_handler.set_score(player1.clone(), puzzle.clone(), 300).await.is_ok());
-        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id).unwrap().get(&puzzle.puzzle_id), Some(&300));
+        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().scores.get(&puzzle.game_id).unwrap().get(&puzzle.puzzle_id), Some(&300));
     }
 
     // Test the disconnected version of the player handler
@@ -877,6 +905,6 @@ mod tests {
 
         // Try setting a particular score
         assert!(player_handler.set_score(player1.clone(), puzzle.clone(), 300).await.is_ok());
-        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().get(&puzzle.game_id).unwrap().get(&puzzle.puzzle_id), Some(&300));
+        assert_eq!(player_handler.get_all_scores(player1.clone()).await.unwrap().scores.get(&puzzle.game_id).unwrap().get(&puzzle.puzzle_id), Some(&300));
     }
 }

@@ -67,9 +67,12 @@ pub type Score = u32;
 /// 
 pub type GameScores = FnvHashMap<PuzzleId, Score>;
 
-/// A type defining the score for all the games, currently just a set of game scores
+/// A struct holding the score for all the games
 /// 
-pub type AllScores = HashMap<GameId, GameScores>;
+#[derive(PartialEq, Eq, Clone, Debug, Default, Serialize, Deserialize)]
+pub struct AllScores {
+    pub scores: HashMap<GameId, GameScores>, // a map holding all the scores
+}
 
 /// A struct to identify a puzzle uniquely (even if puzzle ids are not
 /// unique across games)

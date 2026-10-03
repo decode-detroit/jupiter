@@ -279,7 +279,7 @@ impl MinervaThread {
                     // Interpret string messages
                     if let Message::Text(string) = message {
                         // Try to serialize the message into an update
-                        if let Ok(update) = serde_yaml::from_str::<MinervaUpdate>(&string) {
+                        if let Ok(update) = serde_json::from_str::<MinervaUpdate>(&string) {
                             // Send the update to Jupiter
                             minerva_send.send(game_id.clone(), update).await;
                         } else {

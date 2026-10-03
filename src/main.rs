@@ -305,10 +305,10 @@ impl Jupiter {
 
                     // Subscribe the player to any updates to this player scores
                     Request::PlayerScoreUpdates { player_id, sender } => {
-                        self.database.add_listener(player_id, sender);
-                        
-                        // Indicate success
-                        request.reply_to.send(Reply::success()).unwrap_or(());
+                        match self.database.add_listener(player_id, sender).await {
+                            Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
+                            Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
+                        }
                     }
 
                     // Execute the shutdown request

@@ -62,7 +62,7 @@ impl PlayerDetail {
     /// 
     pub fn set_score(&mut self, unique_puzzle: UniquePuzzle, score: Score) {
         // Insert or access the scores for this game
-        self.current_scores.entry(unique_puzzle.game_id)
+        self.current_scores.scores.entry(unique_puzzle.game_id)
         .and_modify(|game_scores| { 
             // Update the existing score for this puzzle
             game_scores.insert(unique_puzzle.puzzle_id, score);
@@ -78,7 +78,7 @@ impl PlayerDetail {
     /// A method to set all the scores for a particular game
     /// 
     pub fn set_scores(&mut self, game_id: GameId, game_scores: GameScores) {
-        self.current_scores.insert(game_id, game_scores);
+        self.current_scores.scores.insert(game_id, game_scores);
     }
 
     /// A method to remove identifying data

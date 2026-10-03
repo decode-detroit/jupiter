@@ -24,6 +24,9 @@ use crate::definitions::*;
 // Import Tokio features
 use tokio::sync::{mpsc, oneshot};
 
+// Import warp features
+use warp::ws::Message;
+
 // Import FNV HashMap
 use fnv::FnvHashMap;
 
@@ -68,7 +71,7 @@ pub struct WebRequest {
 
 /// An enum to carry requests from the player(s)
 ///
-#[derive(Debug, Clone)]
+#[derive(Clone, Debug)]
 pub enum Request {
     /// A special variant to close the program.
     Close,
@@ -83,7 +86,7 @@ pub enum Request {
     PlayerScores { player_id: PlayerId },
 
     /// A variant to request updates whenever a player's score changes
-    PlayerScoreUpdates { player_id: PlayerId, sender: mpsc::Sender<AllScores> },
+    PlayerScoreUpdates { player_id: PlayerId, sender: SenderWithExpiration },
 
     /// A special variant to close the program, and attempt to shut down the computer
     Shutdown,
@@ -97,6 +100,51 @@ pub enum Request {
     /// A variant to verify this player id for a given game and puzzle
     VerifyCurrentPlayer { player_id: PlayerId, unique_puzzle: UniquePuzzle },
 }
+
+// Implement Request features
+impl Request {
+    /// A helper method to quickly extract the player_id from a request, if provided.
+    /// 
+    pub fn get_player_id(&self) -> Result<PlayerId> {
+        match self {
+            // Clone the internal player Id
+            Request::CreatePlayer { player_id } => Ok(player_id.clone()),
+            Request::CueEvent { player_id, .. } => Ok(player_id.clone()),
+            Request::PlayerScores { player_id } => Ok(player_id.clone()),
+            Request::PlayerScoreUpdates { player_id, .. } => Ok(player_id.clone()),
+            Request::StartPuzzle { player_id, .. } => Ok(player_id.clone()),
+            Request::VerifyPlayer { player_id } => Ok(player_id.clone()),
+            Request::VerifyCurrentPlayer { player_id, .. } => Ok(player_id.clone()),
+
+            // No player ID for remaining variants
+            _ => Err(anyhow!("Request does not contain a player ID.")),
+        }
+    }
+}
+
+
+/// Helper struct to share a websocket with its expiration time
+/// (JWT standard expiration)
+///
+#[derive(Clone, Debug)]
+pub struct SenderWithExpiration {
+    pub socket: mpsc::Sender<Result<Message, warp::Error>>, // the sender for the websocket
+    pub expiration: u64, // the expiration time of the websocket, in UNIX Epoch seconds. 0 for no expiration
+}
+
+// Implement from<AllScores> for Message for websocket messages
+impl From<AllScores> for Result<Message, warp::Error> {
+    fn from(all_scores: AllScores) -> Self {
+        // Try to serialize the update
+        match serde_json::to_string(&all_scores) {
+            Ok(string) => Ok(Message::text(string)),
+
+            // On failure, return an empty string (unable to convert the error)
+            _ => Ok(Message::text("")),
+        }
+    }
+}
+
 
 /// A struct to cover all replies
 ///

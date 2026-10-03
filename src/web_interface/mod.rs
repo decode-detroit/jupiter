@@ -68,9 +68,6 @@ impl WebInterface {
         // Parse any provided addresses, or use defaults
         let possible_address = addr.parse::<std::net::SocketAddr>();
 
-        // Create a channel for sending new listener handles
-        let (listener_send, listener_recv) = mpsc::channel(512);
-
         // If the address is valid
         if let Ok(address) = possible_address {
             // Spin up a thread for processing requests
@@ -147,7 +144,7 @@ impl WebInterface {
                                 .and_then(WebInterface::admin_shutdown);
 
                             // Create the admin create player filter
-                            let admin_create_player = warp::get()
+                            let admin_create_player = warp::post()
                                 .and(warp::path("createPlayer"))
                                 .and(WebInterface::with_clone(decoding_key.clone()))
                                 .and(WebInterface::with_clone(encoding_key.clone()))
@@ -158,17 +155,40 @@ impl WebInterface {
                                 .and_then(WebInterface::admin_create_player)
                                 .with(cors.clone());
 
-                            // Create the authenticated websocket filter for player status
-                            let player_status = warp::path("playerStatus")
+                            // Create the authenticated cue event filter
+                            let cue_event = warp::post()
+                                .and(warp::path("cueEvent"))
                                 .and(WebInterface::with_clone(decoding_key.clone()))
-                                .and(WebInterface::with_clone(listener_send.clone()))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(warp::header::<String>("authorization"))
+                                .and(WebInterface::with_json::<CueEvent>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::auth_handle_request)
+                                .with(cors.clone());
+
+                            // Create the authenticated player scores filter
+                            let player_scores = warp::get()
+                                .and(warp::path("playerScores"))
+                                .and(WebInterface::with_clone(decoding_key.clone()))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(warp::header::<String>("authorization"))
+                                .and(WebInterface::with_json::<PlayerScores>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::auth_handle_request)
+                                .with(cors.clone());
+
+                            // Create the authenticated websocket filter for player updates
+                            let player_updates = warp::path("playerUpdates")
+                                .and(WebInterface::with_clone(decoding_key.clone()))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(warp::path::param::<String>())
                                 .and(warp::path::param::<String>())
                                 .and(warp::ws())
-                                .map(|key, sender, token, ws: warp::ws::Ws| {
+                                .map(|key, sender, player_id, token, ws: warp::ws::Ws| {
                                     // This will call the function if the handshake succeeds.
                                     ws.on_upgrade(move |socket| {
                                         WebInterface::auth_player_listener(
-                                            key, sender, token, socket,
+                                            key, sender, player_id, token,  socket,
                                         )
                                     })
                                 });
@@ -181,22 +201,43 @@ impl WebInterface {
                                 .and(warp::header::<String>("authorization"))
                                 .and(WebInterface::with_json::<StartPuzzle>())
                                 .and(warp::path::end())
-                                .and_then(WebInterface::auth_start_puzzle)
+                                .and_then(WebInterface::auth_handle_request)
                                 .with(cors.clone());
 
+                            // Create the authenticated verify player filter
+                            let verify_player = warp::get()
+                                .and(warp::path("verifyPlayer"))
+                                .and(WebInterface::with_clone(decoding_key.clone()))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(warp::header::<String>("authorization"))
+                                .and(WebInterface::with_json::<VerifyPlayer>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::auth_handle_request)
+                                .with(cors.clone());
 
-                            // FIXME Add additional functions
-                            // -> Uupdate listening handle
-                            // -> Minerva subscriber
+                            // Create the authenticated verify player filter
+                            let verify_current_player = warp::get()
+                                .and(warp::path("verifyCurrentPlayer"))
+                                .and(WebInterface::with_clone(decoding_key.clone()))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(warp::header::<String>("authorization"))
+                                .and(WebInterface::with_json::<VerifyCurrentPlayer>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::auth_handle_request)
+                                .with(cors.clone());
 
                             // Serve these routes
                             warp::serve(
-                                cors_options
-                                    .or(admin_close)
-                                    .or(admin_shutdown)
-                                    .or(admin_create_player)
-                                    .or(player_status)
-                                    .or(start_puzzle)
+                            cors_options
+                                .or(admin_close)
+                                .or(admin_shutdown)
+                                .or(admin_create_player)
+                                .or(cue_event)
+                                .or(player_scores)
+                                .or(player_updates)
+                                .or(start_puzzle)
+                                .or(verify_player)
+                                .or(verify_current_player)
                             )
                             .tls()
                             .cert(certificate)
@@ -204,36 +245,96 @@ impl WebInterface {
                             .run(address)
                             .await;
 
-                        // Use TLS only, no JWT FIXME
-                        } /*else {
-                            // Create the websocket filter
-                            let listen = warp::path("listen")
-                                .and(WebInterface::with_clone(listener_send.clone()))
-                                .and(warp::ws())
-                                .map(|sender, ws: warp::ws::Ws| {
-                                    // This will call the function if the handshake succeeds.
-                                    ws.on_upgrade(move |socket| {
-                                        WebInterface::add_listener(sender, socket)
-                                    })
-                                });
+                        // Use TLS only, no JWT
+                        } else {
+                            // Create the options response
+                            let cors_options = warp::options().map(warp::reply).with(cors.clone());
+
+                            // Create the create player filter
+                            let create_player = warp::post()
+                                .and(warp::path("createPlayer"))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(WebInterface::with_json::<CreatePlayer>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::handle_request)
+                                .with(cors.clone());
 
                             // Create the cue event filter
                             let cue_event = warp::post()
                                 .and(warp::path("cueEvent"))
                                 .and(WebInterface::with_clone(clone_send.clone()))
-                                .and(warp::path::param::<CueEvent>())
+                                .and(WebInterface::with_json::<CueEvent>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::handle_request)
+                                .with(cors.clone());
+
+                            // Create the player scores filter
+                            let player_scores = warp::get()
+                                .and(warp::path("playerScores"))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(WebInterface::with_json::<PlayerScores>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::handle_request)
+                                .with(cors.clone());
+
+                            // Create the websocket filter for player updates
+                            let player_updates = warp::path("playerUpdates")
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(warp::path::param::<String>())
+                                .and(warp::ws())
+                                .map(|sender, player_id, ws: warp::ws::Ws| {
+                                    // This will call the function if the handshake succeeds.
+                                    ws.on_upgrade(move |socket| {
+                                        WebInterface::player_listener(
+                                            sender, player_id, socket,
+                                        )
+                                    })
+                                });
+
+                            // Create the start puzzle filter
+                            let start_puzzle = warp::post()
+                                .and(warp::path("startPuzzle"))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(WebInterface::with_json::<StartPuzzle>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::handle_request)
+                                .with(cors.clone());
+
+                            // Create the verify player filter
+                            let verify_player = warp::get()
+                                .and(warp::path("verifyPlayer"))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(WebInterface::with_json::<VerifyPlayer>())
+                                .and(warp::path::end())
+                                .and_then(WebInterface::handle_request)
+                                .with(cors.clone());
+
+                            // Create the verify player filter
+                            let verify_current_player = warp::get()
+                                .and(warp::path("verifyCurrentPlayer"))
+                                .and(WebInterface::with_clone(clone_send.clone()))
+                                .and(WebInterface::with_json::<VerifyCurrentPlayer>())
                                 .and(warp::path::end())
                                 .and_then(WebInterface::handle_request)
                                 .with(cors.clone());
 
                             // Serve these routes
-                            warp::serve(listen.or(cue_event))
-                                .tls()
-                                .cert(certificate)
-                                .key(private_key)
-                                .run(address)
-                                .await;
-                        }*/
+                            warp::serve(
+                            cors_options
+                                .or(create_player)
+                                .or(cue_event)
+                                .or(player_scores)
+                                .or(player_updates)
+                                .or(start_puzzle)
+                                .or(verify_player)
+                                .or(verify_current_player)
+                            )
+                            .tls()
+                            .cert(certificate)
+                            .key(private_key)
+                            .run(address)
+                            .await;
+                        }
 
                     // Fallback to insecure implementation
                     } else {
@@ -243,102 +344,89 @@ impl WebInterface {
                 }
 
                 // Default to no security
-                /*if !is_using_tls {
-                    // Create the websocket filter
-                    let listen = warp::path("listen")
-                        .and(WebInterface::with_clone(listener_send.clone()))
-                        .and(warp::ws())
-                        .map(|sender, ws: warp::ws::Ws| {
-                            // This will call the function if the handshake succeeds.
-                            ws.on_upgrade(move |socket| WebInterface::add_listener(sender, socket))
-                        });
+                if !is_using_tls {
+                    // Create the create player filter
+                    let create_player = warp::post()
+                        .and(warp::path("createPlayer"))
+                        .and(WebInterface::with_clone(clone_send.clone()))
+                        .and(WebInterface::with_json::<CreatePlayer>())
+                        .and(warp::path::end())
+                        .and_then(WebInterface::handle_request)
+                        .with(cors.clone());
 
                     // Create the cue event filter
                     let cue_event = warp::post()
                         .and(warp::path("cueEvent"))
                         .and(WebInterface::with_clone(clone_send.clone()))
-                        .and(warp::path::param::<CueEvent>())
+                        .and(WebInterface::with_json::<CueEvent>())
                         .and(warp::path::end())
                         .and_then(WebInterface::handle_request)
-                        .with(cors);
+                        .with(cors.clone());
+
+                    // Create the player scores filter
+                    let player_scores = warp::get()
+                        .and(warp::path("playerScores"))
+                        .and(WebInterface::with_clone(clone_send.clone()))
+                        .and(WebInterface::with_json::<PlayerScores>())
+                        .and(warp::path::end())
+                        .and_then(WebInterface::handle_request)
+                        .with(cors.clone());
+
+                    // Create the websocket filter for player updates
+                    let player_updates = warp::path("playerUpdates")
+                        .and(WebInterface::with_clone(clone_send.clone()))
+                        .and(warp::path::param::<String>())
+                        .and(warp::ws())
+                        .map(|sender, player_id, ws: warp::ws::Ws| {
+                            // This will call the function if the handshake succeeds.
+                            ws.on_upgrade(move |socket| {
+                                WebInterface::player_listener(
+                                    sender, player_id, socket,
+                                )
+                            })
+                        });
+
+                    // Create the start puzzle filter
+                    let start_puzzle = warp::post()
+                        .and(warp::path("startPuzzle"))
+                        .and(WebInterface::with_clone(clone_send.clone()))
+                        .and(WebInterface::with_json::<StartPuzzle>())
+                        .and(warp::path::end())
+                        .and_then(WebInterface::handle_request)
+                        .with(cors.clone());
+
+                    // Create the verify player filter
+                    let verify_player = warp::get()
+                        .and(warp::path("verifyPlayer"))
+                        .and(WebInterface::with_clone(clone_send.clone()))
+                        .and(WebInterface::with_json::<VerifyPlayer>())
+                        .and(warp::path::end())
+                        .and_then(WebInterface::handle_request)
+                        .with(cors.clone());
+
+                    // Create the verify player filter
+                    let verify_current_player = warp::get()
+                        .and(warp::path("verifyCurrentPlayer"))
+                        .and(WebInterface::with_clone(clone_send.clone()))
+                        .and(WebInterface::with_json::<VerifyCurrentPlayer>())
+                        .and(warp::path::end())
+                        .and_then(WebInterface::handle_request)
+                        .with(cors.clone());
 
                     // Serve these routes
-                    warp::serve(listen.or(cue_event))
-                        .run(address)
-                        .await;
-                }*/
+                    warp::serve(
+                        create_player
+                        .or(cue_event)
+                        .or(player_scores)
+                        .or(player_updates)
+                        .or(start_puzzle)
+                        .or(verify_player)
+                        .or(verify_current_player)
+                    )
+                    .run(address)
+                    .await;
+                }
             });
-        }
-    }
-
-    /// A function to pass update messages to a websocket
-    ///
-    async fn forward_updates<T>(
-        jupiter_send: JupiterSend,
-        mut listener_recv: mpsc::Receiver<ListenerWithExpiration>,
-        mut update_recv: mpsc::Receiver<T>,
-    ) where
-        T: Clone + Into<Result<Message, warp::Error>>,
-    {
-        // Create a list of listeners
-        let mut listeners = Vec::new();
-
-        // Loop until failure of one of the channels
-        loop {
-            // Check for updates on any line
-            tokio::select! {
-                // A new websocket handle
-                Some(new_listener) = listener_recv.recv() => {
-                    // FIXME do we still want this?
-                    /*// Create a oneshot channel to get the current scene and status
-                    let (reply_to, rx) = oneshot::channel();
-
-                    // Send the message and wait for the reply
-                    jupiter_send.send(reply_to, Request::CurrentSceneAndStatus).await;
-
-                    // If we got a reply
-                    if let Ok(reply) = rx.await {
-                        // If the reply is a success
-                        if reply.is_success() {
-                            // Ensure it's the correct reply
-                            if let ReplyData::CurrentSceneAndStatus((current_scene, current_status)) = reply.data {
-                                // Send the update to the listener (cheat: technically should be InterfaceUpdate some of the time, but they're equivalent)
-                                if new_listener.socket.send(LimitedUpdate::CurrentSceneAndStatus { current_scene, current_status }.into()).await.is_ok() {
-                                    // If successful, add the tx line to the listeners
-                                    listeners.push(new_listener);
-                                }
-                            }
-
-                        // Otherwise, just add the listener
-                        } else {
-                            listeners.push(new_listener);
-                        }
-
-                    // Otherwise, just add the listener
-                    } else {*/
-                        listeners.push(new_listener);
-                    //}
-                }
-
-                // Updates to the interface
-                Some(update) = update_recv.recv() => {
-                    // For every listener, send the update or drop the channel
-                    let mut active_listeners = Vec::new();
-                    for listener in listeners.drain(..) {
-                        // Check if the listener has expired
-                        if listener.expiration != 0 && listener.expiration < jwt::get_current_timestamp() {
-                            continue; // continue and drop the listener
-                        }
-
-                        // Try to send a message with the new entries
-                        if listener.socket.send(update.clone().into()).await.is_ok() {
-                            // If the message was successful, keep the channel
-                            active_listeners.push(listener);
-                        }
-                    }
-                    listeners = active_listeners;
-                }
-            }
         }
     }
 
@@ -451,7 +539,7 @@ impl WebInterface {
     }
 
     /// A function to create a player (if nedded) with the provided id,
-    /// generate a JWT authentication token, and associate it with the player
+    /// and generate a JWT authentication token associated with the player
     ///
     async fn admin_create_player(
         decoding_key: DecodingKey,
@@ -500,7 +588,14 @@ impl WebInterface {
                     http::StatusCode::BAD_REQUEST,
                 ));
             }
-        } // should always receive a reply
+        
+        // Otherwise, note the error
+        } else {
+            return Ok(warp::reply::with_status(
+                warp::reply::json(&Reply::failure("Unable to process request.")),
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+            ));
+        }
 
         // Encode the token
         let token = match jwt::encode(&jwt::Header::default(), &claims, &encoding_key) {
@@ -523,63 +618,21 @@ impl WebInterface {
         ))
     }
 
-    /// A function to check puzzle status and then allow player to start
-    /// the selected puzzle (if available)
+    /// A function to process requests from authorized users
     ///
-    async fn auth_start_puzzle(
+    async fn auth_handle_request(
         key: DecodingKey,
         jupiter_send: JupiterSend,
         token: String,
-        possible_request: StartPuzzle,
+        possible_request: impl TryInto<Request>,
     ) -> Result<impl warp::Reply, warp::Rejection> {
-        // Validate the token
-        let token_data = match WebInterface::validate::<PlayerClaims>(token, "Jupiter", &key) {
+        // Validate the token and player
+        let request = match WebInterface::validate_player_request(token, "Jupiter", &key, possible_request) {
             // Return the data on success
             Ok(data) => data,
 
             // Return early on failure
             Err(reply) => return Ok(reply),
-        };
-
-        // Create a player id from the token string
-        let token_player_id = match PlayerId::new(&token_data.claims.plyr) {
-            Some(id) => id,
-            None => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("Authorization token is invalid.")),
-                    http::StatusCode::FORBIDDEN,
-                ));
-            }
-        };
-
-        // Create the player id from the request
-        let player_id = match PlayerId::new(&possible_request.player_id) {
-            Some(id) => id,
-            None => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("Player ID is invalid.")),
-                    http::StatusCode::BAD_REQUEST,
-                ));
-            }
-        };
-
-        // If the two IDs don't match
-        if player_id != token_player_id {
-            return Ok(warp::reply::with_status(
-                warp::reply::json(&Reply::failure("Player ID is invalid.")),
-                http::StatusCode::BAD_REQUEST,
-            ));
-        }
-
-        // Try to create the request from the provided information
-        let request = match possible_request.try_into() {
-            Ok(request) => request,
-            _ => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("Invalid request.")),
-                    http::StatusCode::BAD_REQUEST,
-                ));
-            }
         };
 
         // Send the message and wait for the reply
@@ -612,11 +665,13 @@ impl WebInterface {
         }
     }
 
-    /// A function to check authentication and then add a new websocket for player status
+    /// A function to check authentication and then add a new websocket for
+    /// player status
     ///
     async fn auth_player_listener(
         key: DecodingKey,
-        sender: mpsc::Sender<ListenerWithExpiration>,
+        jupiter_send: JupiterSend,
+        possible_player: String,
         token: String,
         socket: WebSocket,
     ) {
@@ -625,6 +680,119 @@ impl WebInterface {
             // Return the data on success
             Ok(data) => data,
 
+            // Return early on failure without connecting the socket
+            _ => return,
+        };
+
+        // Create a player id from the token string
+        let token_player_id = match PlayerId::new(&token_data.claims.plyr) {
+            Some(id) => id,
+            
+            // Return early on failure without connecting the socket
+            _ => return,
+        };
+
+        // Create a player id from the request
+        let player_id = match PlayerId::new(&possible_player) {
+            Some(id) => id,
+            
+            // Return early on failure without connecting the socket
+            _ => return,
+        };
+
+        // If the player ids don't match, return without connecting
+        if player_id != token_player_id {
+            return;
+        }
+
+        // Split the socket into a sender and receiver
+        let (ws_tx, mut ws_rx) = socket.split();
+
+        // Use an bounded channel to handle buffering and flushing of messages
+        let (tx, mut rx) = mpsc::channel(512);
+        let stream = stream! {
+            while let Some(item) = rx.recv().await {
+                yield item;
+            }
+        };
+
+        // Forward messages until the line is dropped
+        tokio::spawn(
+            // Forward received messages
+            stream.forward(ws_tx),
+        );
+
+        // Create a oneshot channel
+        let (reply_to, oneshot_rx) = oneshot::channel();
+
+        // Send the message and wait for the reply
+        jupiter_send.send(reply_to, Request::PlayerScoreUpdates {
+            player_id,
+            sender: SenderWithExpiration {
+                socket: tx,
+                expiration: token_data.claims.exp,
+            }
+        }).await;
+
+        // Wait for a sucessful reply
+        if let Ok(reply) = oneshot_rx.await && reply.is_success() {
+            // Wait for the line to be dropped (ignore incoming messages)
+            while ws_rx.next().await.is_some() {}
+        }
+    }
+
+    /// A function to handle incoming requests
+    ///
+    async fn handle_request(
+        jupiter_send: JupiterSend,
+        possible_request: impl TryInto<Request>,
+    ) -> Result<impl warp::Reply, warp::Rejection> {
+        // Try to create the request from the provided information
+        let request = match possible_request.try_into() {
+            Ok(request) => request,
+            _ => return Ok(warp::reply::with_status(
+                    warp::reply::json(&Reply::failure("Invalid request.")),
+                    http::StatusCode::BAD_REQUEST,
+                )),
+        };
+
+        // Send the message and wait for the reply
+        let (reply_to, rx) = oneshot::channel();
+        jupiter_send.send(reply_to, request).await;
+
+        // Wait for the reply
+        if let Ok(reply) = rx.await {
+            // If the reply is a success
+            if reply.is_success() {
+                Ok(warp::reply::with_status(
+                    warp::reply::json(&reply),
+                    http::StatusCode::OK,
+                ))
+
+            // Otherwise, note the error
+            } else {
+                Ok(warp::reply::with_status(
+                    warp::reply::json(&reply),
+                    http::StatusCode::BAD_REQUEST,
+                ))
+            }
+
+        // Otherwise, note the error
+        } else {
+            Ok(warp::reply::with_status(
+                warp::reply::json(&Reply::failure("Unable to process request.")),
+                http::StatusCode::INTERNAL_SERVER_ERROR,
+            ))
+        }
+    }
+
+    /// A function to add a new player listener
+    ///
+    async fn player_listener(jupiter_send: JupiterSend, possible_player: String, socket: WebSocket) {
+        // Create a player id from the possible id
+        let player_id = match PlayerId::new(&possible_player) {
+            Some(id) => id,
+            
             // Return early on failure without connecting the socket
             _ => return,
         };
@@ -646,190 +814,22 @@ impl WebInterface {
             stream.forward(ws_tx),
         );
 
-        // Send a listener with expiration matching the token
-        if sender
-            .send(ListenerWithExpiration {
-                socket: tx,
-                expiration: token_data.claims.exp,
-            })
-            .await
-            .is_err()
-        {
-            // Drop the connection on failure
-            return;
-        }
-
-        // Wait for the line to be dropped (ignore incoming messages)
-        while ws_rx.next().await.is_some() {}
-    }
-
-    /// A function to check authentication and then handle incoming requests
-    /// to the Minerva instance running a particular puzzle
-    /// FIXME currently disabled for simplicity
-    /*async fn authorize_and_minerva_request<R>(
-        key: DecodingKey,
-        jupiter_send: JupiterSend,
-        token: String,
-        request: R,
-    ) -> Result<impl warp::Reply, warp::Rejection>
-    where
-        R: Into<Request>,
-    {
-        // Create the validation requirements for the token
-        let mut validation = Validation::default();
-        validation.set_issuer(&["Jupiter"]);
-        let token_data = match jwt::decode::<PlayerClaims>(&token, &key, &validation) {
-            // Return the decoded data
-            Ok(data) => data,
-
-            // Return an authentication error
-            _ => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("Player is not authorized.")),
-                    http::StatusCode::FORBIDDEN,
-                ));
-            }
-        };
-
-        // Create a player id from the string
-        let player_id = match PlayerId::new(&token_data.claims.plyr) {
-            Some(id) => id,
-            None => {
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("Player is not authorized.")),
-                    http::StatusCode::FORBIDDEN,
-                ));
-            }
-        };
-
-        // Create a oneshot channel to verify the player is valid
-        let (reply_to, rx) = oneshot::channel();
+        // Create a oneshot channel
+        let (reply_to, oneshot_rx) = oneshot::channel();
 
         // Send the message and wait for the reply
-        jupiter_send.send(reply_to, Request::VerifyCurrentPlayer { player_id, game_id, puzzle_id }).await;
-
-        // If we got a reply
-        if let Ok(reply) = rx.await {
-            // If the reply is a failure
-            if !reply.is_success() {
-                // Return an authentication error
-                return Ok(warp::reply::with_status(
-                    warp::reply::json(&Reply::failure("Player is not authorized.")),
-                    http::StatusCode::FORBIDDEN,
-                )); 
-            }
-        // Otherwise, note the error
-        } else {
-            return Ok(warp::reply::with_status(
-                warp::reply::json(&Reply::failure("Unable to process request.")),
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-            ));
-        }
-
-        // Send the message and wait for the reply
-        let (reply_to, rx) = oneshot::channel();
-        jupiter_send.send(reply_to, request.into()).await;
-
-        // Wait for the reply
-        if let Ok(reply) = rx.await {
-            // If the reply is a success
-            if reply.is_success() {
-                Ok(warp::reply::with_status(
-                    warp::reply::json(&reply),
-                    http::StatusCode::OK,
-                ))
-
-            // Otherwise, note the error
-            } else {
-                Ok(warp::reply::with_status(
-                    warp::reply::json(&reply),
-                    http::StatusCode::BAD_REQUEST,
-                ))
-            }
-
-        // Otherwise, note the error
-        } else {
-            Ok(warp::reply::with_status(
-                warp::reply::json(&Reply::failure("Unable to process request.")),
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-            ))
-        }
-    }
-    */
-
-    /// A function to add a new websocket listener
-    ///
-    async fn add_listener(sender: mpsc::Sender<ListenerWithExpiration>, socket: WebSocket) {
-        // Split the socket into a sender and receiver
-        let (ws_tx, mut ws_rx) = socket.split();
-
-        // Use an unbounded channel to handle buffering and flushing of messages
-        let (tx, mut rx) = mpsc::channel(512);
-        let stream = stream! {
-            while let Some(item) = rx.recv().await {
-                yield item;
-            }
-        };
-
-        // Forward messages until the line is dropped
-        tokio::spawn(
-            // Forward received messages
-            stream.forward(ws_tx),
-        );
-
-        // Send a listener with no expiration
-        if sender
-            .send(ListenerWithExpiration {
+        jupiter_send.send(reply_to, Request::PlayerScoreUpdates {
+            player_id,
+            sender: SenderWithExpiration {
                 socket: tx,
                 expiration: 0,
-            })
-            .await
-            .is_err()
-        {
-            // Drop the connection on failure
-            return;
-        }
-
-        // Wait for the line to be dropped (ignore incoming messages)
-        while ws_rx.next().await.is_some() {}
-    }
-
-    /// A function to handle incoming requests
-    ///
-    async fn handle_request<R>(
-        jupiter_send: JupiterSend,
-        request: R,
-    ) -> Result<impl warp::Reply, warp::Rejection>
-    where
-        R: Into<Request>,
-    {
-        // Send the message and wait for the reply
-        let (reply_to, rx) = oneshot::channel();
-        jupiter_send.send(reply_to, request.into()).await;
-
-        // Wait for the reply
-        if let Ok(reply) = rx.await {
-            // If the reply is a success
-            if reply.is_success() {
-                Ok(warp::reply::with_status(
-                    warp::reply::json(&reply),
-                    http::StatusCode::OK,
-                ))
-
-            // Otherwise, note the error
-            } else {
-                Ok(warp::reply::with_status(
-                    warp::reply::json(&reply),
-                    http::StatusCode::BAD_REQUEST,
-                ))
             }
+        }).await;
 
-        // Otherwise, note the error
-        } else {
-            Ok(warp::reply::with_status(
-                warp::reply::json(&Reply::failure("Unable to process request.")),
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-            ))
+        // Wait for a sucessful reply
+        if let Ok(reply) = oneshot_rx.await && reply.is_success() {
+            // Wait for the line to be dropped (ignore incoming messages)
+            while ws_rx.next().await.is_some() {}
         }
     }
 
@@ -853,7 +853,7 @@ impl WebInterface {
     }
 
     // A helper function to validate the provided token against the provided
-    // claims and return a "not authorized" replay if the token fails.
+    // claims and return a "not authorized" reply if the token fails.
     fn validate<T>(token: impl AsRef<[u8]>, issuer: &str, key: &DecodingKey) -> Result<TokenData<T>, warp::reply::WithStatus<warp::reply::Json>>
     where
         T: DeserializeOwned,
@@ -873,5 +873,45 @@ impl WebInterface {
                     http::StatusCode::FORBIDDEN,
                 )),
         };
+    }
+
+    // A helper function to valiatate the provided player id matches the id
+    // provided with the token. Returns the request, if successful.
+    fn validate_player_request(token: impl AsRef<[u8]>, issuer: &str, key: &DecodingKey, possible_request: impl TryInto<Request>) -> Result<Request, warp::reply::WithStatus<warp::reply::Json>> {
+        // Validate the token
+        let token_data = WebInterface::validate::<PlayerClaims>(token, issuer, key)?;
+        
+        // Create a player id from the token string
+        let token_player_id = match PlayerId::new(&token_data.claims.plyr) {
+            Some(id) => id,
+            None => {
+                return Err(warp::reply::with_status(
+                    warp::reply::json(&Reply::failure("Authorization token is invalid.")),
+                    http::StatusCode::FORBIDDEN,
+                ));
+            }
+        };
+
+        // Try to create the request from the provided information
+        let request = match possible_request.try_into() {
+            Ok(request) => request,
+            _ => return Err(warp::reply::with_status(
+                    warp::reply::json(&Reply::failure("Invalid request.")),
+                    http::StatusCode::BAD_REQUEST,
+                )),
+        };
+
+        // If the two IDs match
+        if let Ok(player_id) = request.get_player_id() && player_id == token_player_id {
+            // Return the request
+            Ok(request)
+        
+        // Otherwise, return an error
+        } else {
+            Err(warp::reply::with_status(
+                warp::reply::json(&Reply::failure("Player ID is invalid.")),
+                http::StatusCode::BAD_REQUEST,
+            ))
+        }
     }
 }

@@ -167,11 +167,48 @@ impl Config {
 // Tests of the scene module
 #[cfg(test)]
 mod tests {
-    //use super::*;
+    use fnv::FnvHashMap;
+
+    use super::*;
+
+    /* Generate example config 
+    #[tokio::test]
+    async fn example_config() {
+        // Create the yaml config
+        let mut score_map = FnvHashMap::default();
+        score_map.insert(ItemId::new_unchecked(2000), 300);
+        let mut game = Game::default();
+        game.puzzles.insert(PuzzleId::new_unchecked(1000), Puzzle {
+            current_state: ItemId::new_unchecked(1001),
+            available_state: ItemId::new_unchecked(1002),
+            starting_state: ItemId::new_unchecked(1003),
+            starting_event: ItemId::new_unchecked(1004),
+            score_map,
+            current_player: None,
+        });
+        let mut game_map = AllGames::default();
+        game_map.insert(GameId::new("game1").unwrap(), game);
+        let config = Config {
+            identifier: Identifier {
+                id: Some(0),
+            },
+            server_location: Some("redis://127.0.0.1:6379".to_string()),
+            game_map,
+            minerva_controllers: vec![],
+        };
+
+        // Open a file
+        let mut path = std::env::current_dir().unwrap();
+        path.push("config_example.yaml");
+        let config_file = File::create(&path).await.context("Unable to open configuration file.").unwrap();
+
+        // Try to write to a file
+        config.to_config(config_file).await;
+    }*/
 
     // FIXME Define tests of this module
-    #[test]
-    fn missing_tests() {
+    #[tokio::test]
+    async fn missing_tests() {
         // FIXME: Implement this
         unimplemented!();
     }

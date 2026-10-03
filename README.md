@@ -1,115 +1,71 @@
-# Minerva
-#### Interactive Show Control
+# Jupiter
+#### Player and Score Management
 
-Quickly configure and control an interactive show, no programming experience necessary.
-
-* **Plug-And-Play**: Control video, audio, DMX, LEDs, microcontrollers, and other common show elements with the connection modules. You can run everthing on a single computer or seamlessly connect multiple computers for large installations.
-
-* **Interactive**: Trigger linked events from the user interface, connected devices, or the web endpoint. Minerva supports multiple protocols for bidirectional communication with microcontrollers (Arduino, RaspberryPi, ESP, and others) and includes a simple framework for new protocols.
-
-* **Reliable**: Minerva is written in pure Rust, a threadsafe language. The software has been extensively tested (in real-world installations) and includes an optional live-backup feature to resume instantly if power is lost.
+Manage players and scores for interactive puzzle games with realtime data backup.
 
 ## Getting Started
 
-If you're on a 64-bit GNU/Linux system or 64-bit Raspberry Pi, you can use the the [binary releases here](https://github.com/decode-detroit/minerva/releases) and skip down to [Installing Extras](#Installing-Extras) below. There is also a binary for 64-bit Windows, but at the moment is comes with some limitations (no Media playback or DMX).
+If you're on a 64-bit GNU/Linux system or 64-bit Raspberry Pi, you can use the the [binary releases here](https://github.com/decode-detroit/jupiter/releases) and move on to installing Jupiter's sister programs below.
 
-If you're on a Mac, help us produce working binaries! We don't have an Apple device to compile them.
+If you're on Windows, we can likely provide you with a binary (but don't need it ourselves, so we have not compiled one). If you're on Mac, help us produce working binaries! We don't have an Apple device to compile them.
 
 ## Compile From Source (Cross-Platform)
 
-If you would like to contribute to Minerva, or if you are on Windows or Mac, you'll need to compile from source. Start with these prerequisites.
+If you would like to contribute to Jupiter, or if you are on Windows or Mac, you'll need to compile from source. Start with these prerequisites.
 
 ### Prerequisites
 
-You'll need Rust and Node.js to compile and run Minerva.
+You'll need Rust to compile and run Jupier.
 
 * Installation of Rust: https://www.rust-lang.org/
-* Installation of Node.js: https://nodejs.org/en
 
-Follow the directions on both websites to download and install these tools before you proceed.
-
-Once you have Node installed, used the node package manager to install react-scripts (which is used to generate the web interface):
-```
-npm install -g react-scripts
-```
+Follow the directions to download and install Rust tools before you proceed.
 
 ### Compiling
 
-Once you have installed the two prerequities above, clone or download this repository. Compile the web interfaces with by entering those two source directories and building the interface with Node:
-```
-cd /web_run_src/
-npm install
-npm run build
-cd ../web_edit_src/
-npm install
-npm run build
-cd ../
-```
-
-Then compile and run the program using Cargo (included with Rust):
+Once you have installed the prerequities, clone or download this repository. Compile and run the program using Cargo (included with Rust):
 ```
 cargo run
 ```
 
-This will take several minutes to download all the components. You'll be left with a running Minerva instance with an example configuration loaded. You can use
+This will take several minutes to download all the components. You'll be left with a running Jupiter instance with an example configuration loaded. You can use
 ```
 cargo run
 ```
 
-to run Minerva again (it will not recompile this time). This is a debug version (larger file, but otherwise perfectly functional).
+to run Jupiter again (it will not recompile this time). This is a debug version (larger file, but otherwise perfectly functional).
 
 To compile a finished copy for deployment, use
 ```
 cargo build --release
 ```
 
-The completed binary will be located in the automatically generated "target/release" folder with the name "minerva".
+The completed binary will be located in the automatically generated "target/release" folder with the name "jupiter".
 
 ## Installing Extras
 
-Extras! Everyone loves extras. To take advantage of all Minerva's features, you'll need the Gstreamer library and a Redis server.
+Extras! Everyone loves extras. To take advantage of all Jupiter's features, you'll need **Minerva**.
 
-* Sister program **Apollo** controls media playback directly from Minerva.
-* Brother program **Vulcan** controls DMX lighting directly from Minerva.
+* Sister program **Minerva** controls game state.
 * **Redis** provides real-time crash recovery.
 
-You'll need to install these tools on whichever computers you would like to **run** Minerva.
+You'll need to install these tools on whichever computers you would like to **run** Jupiter, although Minerva can be run on a separate computer instead if you prefer.
 
-### Apollo for Audio/Video
+### Minerva for Game Management
 
-Audio and video playback support is built in to Minerva by default.
-
-Minerva uses an external program, [Apollo](https://github.com/decode-detroit/apollo), for all media playback. The two projects are developed concurrently and are separate to improve reliability and reusability.
-
-### Vulcan for DMX Control
-
-DMX support is built in to Minerva by default.
-
-Minerva uses an external program, [Vulcan](https://github.com/decode-detroit/vulcan), for all dmx control. The two projects are developed concurrently and are separate to improve reliability and reusability.
-
-All DMX channels default to 0. This can cause confusion when the channel isn't explicitly set by the user, but is nonetheless necessary for the device to function. For example, the main dimmer channel on a light fixture needs to be manually set to 255.
+Jupiter does not manage the game state itself. Instead, the game is managed by Minerva, a separate program which is developed concurrently. The two projects are separate to improve reliability, reusability, and security.
 
 ### Redis for Instant Recovery
 
 The most up-to-date instructions for installing Redis can be found here: https://redis.io/.
 
-The default configuration should work just fine for most purposes. Minerva will update the settings to make sure every change is written to the disk.
-
-### ZMQ for Communication
-
-ZMQ protocols for communication between Minerva instances are now included by default! No additional packages are required.
-
-### Mercury for Microcontrollers
-
-The Mercury protocol is included for communicating with microcontrollers over USB. The library is complete, debugged, and documented, but not publically published. Email us if you're interested!
-
-On Debian-like systems, you may need to add your user to the dialout group to communicate over USB:
-```
-sudo adduser $USER dialout
-```
-You'll need to log out and log back in for this to take effect.
+The default configuration should work just fine for most purposes. Jupiter will update the settings to make sure every change is written to the disk.
 
 ## Raspberry Pi-like Systems (ARM)
+
+# OUT OF DATE
+
+The sections below are copied from Minerva and need to be updated for Jupiter.
 
 It's possible to run Minerva on less-capible systems! For example, a Raspberry Pi 4 can manage most of the tasks of a full computer (video is a bit touchy).
 

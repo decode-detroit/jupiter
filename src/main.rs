@@ -241,16 +241,33 @@ impl Jupiter {
             Some(update) = self.minerva_recv.recv() => {
                 // Match the update type
                 match update.update {
+                    // Get initial puzzle state
+                    MinervaUpdate::CurrentSceneAndStatus { mut current_status, .. } => {
+                        // Look through each status entry
+                        for (status_id, new_state) in current_status.drain() {
+                            // Compose the unique puzzle
+                            let unique_puzzle = UniquePuzzle {
+                                game_id: update.game_id.clone(),
+                                puzzle_id: ItemId::new_unchecked(status_id), // may not actually be a puzzle
+                            };
+
+                            // Try to update the state of that puzzle
+                            info!("Updating status {} to {} for game {}.", status_id, new_state, update.game_id);
+                            self.database.change_state(unique_puzzle, ItemId::new_unchecked(new_state)).await;
+                        }
+                    }
+
                     // Possibly update the state of a puzzle
                     MinervaUpdate::UpdateStatus { status_id, new_state } => {
                         // Compose the unique puzzle
                         let unique_puzzle = UniquePuzzle {
-                            game_id: update.game_id,
-                            puzzle_id: status_id, // may not actually be a puzzle
+                            game_id: update.game_id.clone(),
+                            puzzle_id: status_id.get_id(), // may not actually be a puzzle
                         };
 
                         // Try to update the state of that puzzle
-                        self.database.change_state(unique_puzzle, new_state).await;
+                        info!("Updating status {} to {} for game {}.", status_id, new_state, update.game_id);
+                        self.database.change_state(unique_puzzle, new_state.get_id()).await;
                     },
 
                     // Ignore all others
@@ -265,11 +282,13 @@ impl Jupiter {
                     // Execute the close request
                     Request::Close => {
                         request.reply_to.send(Reply::success()).unwrap_or(());
+                        info!("Shutting down Jupiter ...");
                         return Err(false); // exit the loop, but don't shutdown
                     }
 
                     // Create a new player id (or do nothing, if the player exists)
                     Request::CreatePlayer { player_id } => {
+                        info!("Trying to create player {}.", player_id);
                         match self.database.create_player(player_id).await {
                             Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
@@ -278,6 +297,7 @@ impl Jupiter {
 
                     // Cue an event for the selected game and puzzle
                     Request::CueEvent { player_id, unique_puzzle, event_id } => {
+                        info!("Trying to cue event {} for game {}.", event_id, unique_puzzle.game_id);
                         // Verify the current player
                         if let Err(err) = self.database.verify_current_player(&unique_puzzle, &player_id).await {
                             request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(());
@@ -297,6 +317,7 @@ impl Jupiter {
 
                     // Get the current player scores
                     Request::PlayerScores { player_id } => {
+                        info!("Trying to retrieve scores for {}.", player_id);
                         match self.database.get_all_scores(player_id).await {
                             Ok(scores) => request.reply_to.send(Reply { is_valid: true, data: ReplyData::Scores(scores) }).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
@@ -305,6 +326,7 @@ impl Jupiter {
 
                     // Subscribe the player to any updates to this player scores
                     Request::PlayerScoreUpdates { player_id, sender } => {
+                        info!("Trying to subscribe to updates for {}.", player_id);
                         match self.database.add_listener(player_id, sender).await {
                             Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
@@ -314,11 +336,13 @@ impl Jupiter {
                     // Execute the shutdown request
                     Request::Shutdown => {
                         request.reply_to.send(Reply::success()).unwrap_or(());
+                        info!("Shutting down the computer ...");
                         return Err(true); // exit the loop and shutdown
                     }
 
                     // Start the selected puzzle if it is available
                     Request::StartPuzzle { player_id, unique_puzzle } => {
+                        info!("Trying to start a puzzle for player {}.", player_id);
                         match self.database.start_puzzle(unique_puzzle.clone(), player_id).await {
                             // If the puzzle was started by this player
                             Ok(starting_event) => {
@@ -342,6 +366,7 @@ impl Jupiter {
 
                     // Verify that the specified player exists
                     Request::VerifyPlayer { player_id } => {
+                        info!("Trying to verify player {}.", player_id);
                         match self.database.verify_player(player_id).await {
                             Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
@@ -350,6 +375,7 @@ impl Jupiter {
 
                     // Verify that the specified player is the current player
                     Request::VerifyCurrentPlayer { player_id, unique_puzzle } => {
+                        info!("Trying to verify current player {}.", player_id);
                         match self.database.verify_current_player(&unique_puzzle, &player_id).await {
                             Ok(()) => request.reply_to.send(Reply::success()).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),

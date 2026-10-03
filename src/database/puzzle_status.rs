@@ -173,9 +173,9 @@ impl PuzzleHandler {
                     // Change the puzzle state and return the result
                     Occupied(mut puzzle) => puzzle.get_mut().change_state(new_state),
         
-                    // The game does not exist
+                    // The puzzle does not exist
                     _ => {
-                        error!("Puzzle Id does not exist.");
+                        warn!("Puzzle Id does not exist.");
                         None
                     }
                 }

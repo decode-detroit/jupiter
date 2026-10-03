@@ -36,7 +36,7 @@ pub const UNIVERSAL_IDENTIFIER: u32 = 0;
 ///
 /// If no identifier is specified, this instance will use the universal identifier.
 ///
-/// Note: Specifying an identifier with the universersal identifier (0) is the
+/// Note: Specifying an identifier with the universal identifier (0) is the
 /// same as specifying None.
 ///
 #[derive(PartialEq, Eq, Copy, Clone, Debug, Serialize, Deserialize)]
@@ -49,7 +49,7 @@ impl fmt::Display for Identifier {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         match &self.id {
             Some(id) => write!(f, "{}", id),
-            _ => write!(f, "~"),
+            _ => write!(f, "{}", UNIVERSAL_IDENTIFIER), // the same as id: 0
         }
     }
 }
@@ -72,7 +72,7 @@ impl GameId {
     /// A function to create a new game id from a str.
     /// 
     /// This function will automatically trucate the string
-    /// to (approximately) 10 characters and convert the to uppercase.
+    /// to (approximately) 16 characters and convert the to uppercase.
     /// 
     /// # Errors
     /// 
@@ -80,7 +80,7 @@ impl GameId {
     /// 
     pub fn new(unchecked_id: &str) -> Option<GameId> {
         // Truncate the string to the closest char boundary and convert to lowercase
-        let id = unchecked_id[..unchecked_id.floor_char_boundary(10)].to_lowercase().clone();
+        let id = unchecked_id[..unchecked_id.floor_char_boundary(16)].to_lowercase().clone();
 
         // If the id is too short, return none
         if id.len() < 4 {
@@ -117,7 +117,7 @@ impl PlayerId {
     /// A function to create a new player id from a str.
     /// 
     /// This function will automatically trucate the string
-    /// to (approximately) 10 characters and convert the to uppercase.
+    /// to (approximately) 16 characters and convert the to uppercase.
     /// 
     /// # Errors
     /// 
@@ -125,7 +125,7 @@ impl PlayerId {
     /// 
     pub fn new(unchecked_id: &str) -> Option<PlayerId> {
         // Truncate the string to the closest char boundary and convert to uppercase
-        let id= unchecked_id[..unchecked_id.floor_char_boundary(10)].to_uppercase().clone();
+        let id= unchecked_id[..unchecked_id.floor_char_boundary(16)].to_uppercase().clone();
 
         // If the id is too short, return none
         if id.len() < 4 {
@@ -204,8 +204,8 @@ mod tests {
     #[test]
     fn compare_player_ids() {
         // Create several ids
-        let id = PlayerId::new("player1111").unwrap();
-        let same_id = PlayerId::new("PLAYER1111111").unwrap();
+        let id = PlayerId::new("player1234567890").unwrap();
+        let same_id = PlayerId::new("PLAYER1234567890 extra text is truncated").unwrap();
         let different_id = PlayerId::new("player12").unwrap();
 
         // Compare the ids

@@ -867,6 +867,7 @@ mod tests {
         assert!(player_handler.verify_player(&player3).await.is_err());
 
         // Try setting a player name
+        player_handler.set_name(player1.clone(), "My Name".to_string()).await.unwrap();
         assert!(player_handler.set_name(player1.clone(), "My Name".to_string()).await.is_ok());
         assert_eq!(player_handler.get_name(player1.clone()).await.unwrap(), Some("My Name".to_string()));
 

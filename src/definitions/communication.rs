@@ -21,11 +21,17 @@
 // Import crate definitions
 use crate::definitions::*;
 
+// Import standard library features
+use std::time::Duration;
+
 // Import Tokio features
 use tokio::sync::{mpsc, oneshot};
 
 // Import warp features
 use warp::ws::Message;
+
+// Import Chrono features
+use chrono::NaiveDateTime;
 
 // Import FNV HashMap
 use fnv::FnvHashMap;
@@ -245,31 +251,51 @@ pub struct GameUpdate {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub enum MinervaUpdate {
-    /// A variant to receive a current event id
-    #[serde(rename_all = "camelCase")]
-    CurrentEvent {
-        event: ItemId, // current event id
-    },
-
-    /// A variant to receive the current scene and state of all statuses
+    /// A variant to provide the current scene and state of all statuses
     #[serde(rename_all = "camelCase")]
     CurrentSceneAndStatus {
         current_scene: ItemId,
         current_status: CurrentStatus,
     },
 
-    /// A variant indicating a change in the current scene
+    /// A variant to post a current event to the status bar
+    #[serde(rename_all = "camelCase")]
+    Notify { message: String },
+
+    /// A variant to indicate that the entire interface should be refreshed
+    #[serde(rename_all = "camelCase")]
+    RefreshAll,
+
+    /// A variant indicating the current scene should be refreshed with
+    /// the new scene.
     #[serde(rename_all = "camelCase")]
     UpdateScene { current_scene: ItemId },
 
-    /// A variant to update the state of a partiular status
+    /// A variant to update the state of a partiular status.
     #[serde(rename_all = "camelCase")]
     UpdateStatus {
-        status_id: ItemId, // the status to update
-        new_state: ItemId, // the new state of the status
+        status_id: ItemPair, // the status to update
+        new_state: ItemPair, // the new state of the status
     },
+
+    /// A variant indicating that the system notifications should be updated.
+    #[serde(rename_all = "camelCase")]
+    UpdateNotifications { notifications: Vec<String> },
+
+    /// A variant indicating that the event timeline should be updated.
+    #[serde(rename_all = "camelCase")]
+    UpdateTimeline { events: Vec<UpcomingEvent> },
 }
 
 /// A type to share the current status of the game
 ///
 pub type CurrentStatus = FnvHashMap<u32, u32>;
+
+/// A type to understand an upcoming event from Minerva
+#[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct UpcomingEvent {
+    pub event: ItemPair,           // id and description of the event to launch
+    pub start_time: NaiveDateTime, // the original start time of the event
+    pub delay: Duration,           // delay between now and the time for the event
+}

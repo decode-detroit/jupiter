@@ -37,7 +37,7 @@ pub type AllGames = HashMap<GameId, Game>; // a hash map of game id and game det
 
 /// A struct to store an individual game, currently defined as a hashset of puzzles
 ///
-#[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
+#[derive(PartialEq, Eq, Clone, Debug, Default, Serialize, Deserialize)]
 pub struct Game {
     pub puzzles: FnvHashMap<PuzzleId, Puzzle>, // a set of puzzles for this game
 }
@@ -90,12 +90,12 @@ pub struct UniquePuzzle {
 /// 
 #[derive(PartialEq, Eq, Clone, Debug, Serialize, Deserialize)]
 pub struct Puzzle {
-    current_state: ItemId, // the current state of the puzzle
-    available_state: ItemId, // the state when player(s) can be added
-    starting_state: ItemId, // the state the puzzle should be changed to when a player is added
-    starting_event: ItemId, // the event id which will modify the puzzle to the corresponding starting state FIXME a bit of a hack and very brittle design
-    score_map: FnvHashMap<ItemId, Score>, // a map of states to their corresponding score (including 0, typically a failure score)
-    current_player: Option<PlayerId>, // the player who will receive the puzzle score
+    pub current_state: ItemId, // the current state of the puzzle
+    pub available_state: ItemId, // the state when player(s) can be added
+    pub starting_state: ItemId, // the state the puzzle should be changed to when a player is added
+    pub starting_event: ItemId, // the event id which will modify the puzzle to the corresponding starting state FIXME a bit of a hack and very brittle design
+    pub score_map: FnvHashMap<ItemId, Score>, // a map of states to their corresponding score (including 0, typically a failure score)
+    pub current_player: Option<PlayerId>, // the player who will receive the puzzle score
 }
 
 // Implement key features for the puzzle struct

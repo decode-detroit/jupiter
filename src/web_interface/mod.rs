@@ -44,6 +44,10 @@ use serde::de::DeserializeOwned;
 use jsonwebtoken as jwt;
 use jwt::{decode, DecodingKey, EncodingKey, TokenData, Validation};
 
+// Define name of token issuers
+const ADMIN_ISSUER: &str = "Jupiter-Admin";
+const ISSUER: &str = "Jupiter";
+
 // Define validity period for new tokens
 const TOKEN_DURATION: u64  = 43200; // 12 hours in seconds
 
@@ -84,16 +88,14 @@ impl WebInterface {
                         cors = cors.allow_origin(address.as_str());
                     }
 
-                    // Add the authentication options
-                    cors = cors.allow_headers(vec!["authorization"]);
-
-                    // Specify relevant methods
-                    cors = cors.allow_methods(vec!["GET", "POST"]);
+                    // Add the header options and relevant methods
+                    cors = cors.allow_headers(vec!["authorization", "content-type"]).allow_methods(vec!["GET", "POST"]);
 
                 // Otherwise, default to allow any origin
                 } else {
                     cors = warp::cors()
                         .allow_any_origin()
+                        .allow_headers(vec!["authorization", "content-type"])
                         .allow_methods(vec!["GET", "POST"]);
                 }
 
@@ -167,7 +169,7 @@ impl WebInterface {
                                 .with(cors.clone());
 
                             // Create the authenticated player scores filter
-                            let player_scores = warp::get()
+                            let player_scores = warp::post()
                                 .and(warp::path("playerScores"))
                                 .and(WebInterface::with_clone(decoding_key.clone()))
                                 .and(WebInterface::with_clone(clone_send.clone()))
@@ -205,7 +207,7 @@ impl WebInterface {
                                 .with(cors.clone());
 
                             // Create the authenticated verify player filter
-                            let verify_player = warp::get()
+                            let verify_player = warp::post()
                                 .and(warp::path("verifyPlayer"))
                                 .and(WebInterface::with_clone(decoding_key.clone()))
                                 .and(WebInterface::with_clone(clone_send.clone()))
@@ -216,7 +218,7 @@ impl WebInterface {
                                 .with(cors.clone());
 
                             // Create the authenticated verify player filter
-                            let verify_current_player = warp::get()
+                            let verify_current_player = warp::post()
                                 .and(warp::path("verifyCurrentPlayer"))
                                 .and(WebInterface::with_clone(decoding_key.clone()))
                                 .and(WebInterface::with_clone(clone_send.clone()))
@@ -439,7 +441,7 @@ impl WebInterface {
     fn generate_admin_token(encoding_key: EncodingKey) -> String {
         // Compose the claims for the token
         let claims = AuthClaims {
-            iss: "Jupiter-Admin".into(),
+            iss: ADMIN_ISSUER.into(),
             exp: 0, // Expiration is ignored
         };
 
@@ -459,7 +461,7 @@ impl WebInterface {
         token: String,
     ) -> Result<impl warp::Reply, warp::Rejection> {
         // Validate the token
-        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, "Jupiter-Admin", &key) {
+        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, ADMIN_ISSUER, &key, false) {
             // Return early on failure
             return Ok(reply);
         };
@@ -503,7 +505,7 @@ impl WebInterface {
         token: String,
     ) -> Result<impl warp::Reply, warp::Rejection> {
         // Validate the token
-        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, "Jupiter-Admin", &key) {
+        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, ADMIN_ISSUER, &key, false) {
             // Return early on failure
             return Ok(reply);
         };
@@ -548,15 +550,17 @@ impl WebInterface {
         token: String,
         possible_request: CreatePlayer,
     ) -> Result<impl warp::Reply, warp::Rejection> {
+        info!("Got a create player request");
+
         // Validate the token
-        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, "Jupiter-Admin", &decoding_key) {
+        if let Err(reply) = WebInterface::validate::<AuthClaims>(token, ADMIN_ISSUER, &decoding_key, false) {
             // Return early on failure
             return Ok(reply);
         };
         
         // Compose the claims for the new token
         let claims = PlayerClaims {
-            iss: "Jupiter".into(),
+            iss: ISSUER.into(),
             plyr: possible_request.player_id.clone(),
             exp: jwt::get_current_timestamp() + TOKEN_DURATION,
         };
@@ -571,6 +575,8 @@ impl WebInterface {
                 ));
             }
         };
+
+        info!("Validation succeeded");
 
         // Create a oneshot channel to verify creation of the player
         let (reply_to, rx) = oneshot::channel();
@@ -597,6 +603,8 @@ impl WebInterface {
             ));
         }
 
+        info!("All Good on my end");
+
         // Encode the token
         let token = match jwt::encode(&jwt::Header::default(), &claims, &encoding_key) {
             Ok(token) => token,
@@ -607,6 +615,8 @@ impl WebInterface {
                 ));
             }
         };
+
+        info!("Token generated {}", token);
 
         // Return the successful token
         Ok(warp::reply::with_status(
@@ -627,7 +637,7 @@ impl WebInterface {
         possible_request: impl TryInto<Request>,
     ) -> Result<impl warp::Reply, warp::Rejection> {
         // Validate the token and player
-        let request = match WebInterface::validate_player_request(token, "Jupiter", &key, possible_request) {
+        let request = match WebInterface::validate_player_request(token, ISSUER, &key, possible_request) {
             // Return the data on success
             Ok(data) => data,
 
@@ -676,7 +686,7 @@ impl WebInterface {
         socket: WebSocket,
     ) {
         // Validate the token
-        let token_data = match WebInterface::validate::<PlayerClaims>(token, "Jupiter", &key) {
+        let token_data = match WebInterface::validate::<PlayerClaims>(token, ISSUER, &key, true) {
             // Return the data on success
             Ok(data) => data,
 
@@ -854,12 +864,13 @@ impl WebInterface {
 
     // A helper function to validate the provided token against the provided
     // claims and return a "not authorized" reply if the token fails.
-    fn validate<T>(token: impl AsRef<[u8]>, issuer: &str, key: &DecodingKey) -> Result<TokenData<T>, warp::reply::WithStatus<warp::reply::Json>>
+    fn validate<T>(token: impl AsRef<[u8]>, issuer: &str, key: &DecodingKey, check_expiration: bool) -> Result<TokenData<T>, warp::reply::WithStatus<warp::reply::Json>>
     where
         T: DeserializeOwned,
     {
         // Create the validation requirements for the token
         let mut validation = Validation::default();
+        validation.validate_exp = check_expiration;
         validation.set_issuer(&[issuer]);
         
         // Decode and validate the token
@@ -879,7 +890,7 @@ impl WebInterface {
     // provided with the token. Returns the request, if successful.
     fn validate_player_request(token: impl AsRef<[u8]>, issuer: &str, key: &DecodingKey, possible_request: impl TryInto<Request>) -> Result<Request, warp::reply::WithStatus<warp::reply::Json>> {
         // Validate the token
-        let token_data = WebInterface::validate::<PlayerClaims>(token, issuer, key)?;
+        let token_data = WebInterface::validate::<PlayerClaims>(token, issuer, key, true)?;
         
         // Create a player id from the token string
         let token_player_id = match PlayerId::new(&token_data.claims.plyr) {

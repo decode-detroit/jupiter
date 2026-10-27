@@ -808,7 +808,7 @@ impl PlayerHandler {
                 if let Occupied(listener) = player_listeners.entry(player_id.clone()) {
                     // Check if the listener has expired
                     let expiration = listener.get().expiration;
-                    if expiration == 0 && expiration > jwt::get_current_timestamp() {
+                    if expiration == 0 || expiration > jwt::get_current_timestamp() {
                         // If not, send the score update
                         let _ = listener.get().socket.try_send(new_scores.into());
                     
@@ -823,7 +823,7 @@ impl PlayerHandler {
                 if let Occupied(listener) = player_listeners.entry(player_id.clone()) {
                     // Check if the listener has expired
                     let expiration = listener.get().expiration;
-                    if expiration == 0 && expiration > jwt::get_current_timestamp() {
+                    if expiration == 0 || expiration > jwt::get_current_timestamp() {
                         // If not, send the score update
                         let _ = listener.get().socket.try_send(new_scores.into());
                     

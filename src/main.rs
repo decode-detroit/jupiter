@@ -319,7 +319,7 @@ impl Jupiter {
                     Request::PlayerScores { player_id } => {
                         info!("Trying to retrieve scores for {}.", player_id);
                         match self.database.get_all_scores(player_id).await {
-                            Ok(scores) => request.reply_to.send(Reply { is_valid: true, data: ReplyData::Scores(scores) }).unwrap_or(()),
+                            Ok(scores) => request.reply_to.send(Reply { is_valid: true, data: ReplyData::Scores(scores.into()) }).unwrap_or(()),
                             Err(err) => request.reply_to.send(Reply::failure(format!("{}", err))).unwrap_or(()),
                         }
                     }
@@ -343,7 +343,7 @@ impl Jupiter {
                     // Start the selected puzzle if it is available
                     Request::StartPuzzle { player_id, unique_puzzle } => {
                         info!("Trying to start a puzzle for player {}.", player_id);
-                        match self.database.start_puzzle(unique_puzzle.clone(), player_id).await {
+                        match self.database.start_puzzle(unique_puzzle.clone(), player_id.clone()).await {
                             // If the puzzle was started by this player
                             Ok(starting_event) => {
                                 // Update the puzzle state using the starting event
@@ -352,8 +352,10 @@ impl Jupiter {
                                 
                                 // On failure, reset the puzzle
                                 } else {
-                                    // Ignore the result
-                                    let _ = self.database.reset_puzzle(unique_puzzle.clone());
+                                    // Try to reset the puzzle
+                                    if let Err(err) = self.database.reset_puzzle(unique_puzzle, player_id).await {
+                                        error!("Unable to reset puzzle: {}", err);
+                                    }
 
                                     // Notify of the failure
                                     request.reply_to.send(Reply::failure(format!("Unable to contact Minerva."))).unwrap_or(());

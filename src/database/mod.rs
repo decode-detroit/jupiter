@@ -106,23 +106,32 @@ impl Database {
         self.player_status.get_all_scores(player_id).await
     }
 
-    /// A method to reset a particular puzzle. This method should
-    /// only be used if you know the puzzle was available to start,
+    /// A method to reset a particular puzzle and current puzzle for a player.
+    /// This method should only be used if you know the puzzle was available to start,
     /// but Minerva could not be reached.
     /// 
-    pub async fn reset_puzzle(&mut self, unique_puzzle: UniquePuzzle) -> Result<()> {
+    pub async fn reset_puzzle(&mut self, unique_puzzle: UniquePuzzle, player_id: PlayerId) -> Result<()> {
         // Try to reset the puzzle to available
-        self.puzzle_status.reset_puzzle(unique_puzzle)
+        self.puzzle_status.reset_puzzle(unique_puzzle)?;
+
+        // Try to reset the current puzzle for the player
+        self.player_status.set_current_puzzle(player_id, None).await
     }
 
-    /// A method to start a particular puzzle
+    /// A method to start a particular puzzle and set the current puzzle for the player
     /// 
     pub async fn start_puzzle(&mut self, unique_puzzle: UniquePuzzle, player_id: PlayerId) -> Result<ItemId> {
         // Verify that the player is valid
         self.player_status.verify_player(&player_id).await?;
 
         // Try to make the player the current player
-        self.puzzle_status.start_puzzle(unique_puzzle, player_id)
+        let start_event = self.puzzle_status.start_puzzle(unique_puzzle.clone(), player_id.clone())?;
+
+        // Set the current puzzle for the player
+        self.player_status.set_current_puzzle(player_id, Some(unique_puzzle)).await?;
+
+        // Return the starting event for the puzzle
+        Ok(start_event)
     }
 
     /// A method to verify that a particular player exists
@@ -152,6 +161,11 @@ impl Database {
         // Try to make the change
         if let Some((player_id, score)) = self.puzzle_status.change_state(unique_puzzle.clone(), new_state) {
             info!("Player {} received score {}.", player_id, score);
+
+            // Reset the player's current puzzle
+            if let Err(err) = self.player_status.set_current_puzzle(player_id.clone(), None).await {
+                error!("Unable to update player current puzzle: {}", err);
+            }
 
             // Update the player's score
             if let Err(err) = self.player_status.set_score(player_id, unique_puzzle, score).await {

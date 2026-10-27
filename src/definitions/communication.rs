@@ -23,6 +23,7 @@ use crate::definitions::*;
 
 // Import standard library features
 use std::time::Duration;
+use std::collections::HashMap;
 
 // Import Tokio features
 use tokio::sync::{mpsc, oneshot};
@@ -138,11 +139,49 @@ pub struct SenderWithExpiration {
     pub expiration: u64, // the expiration time of the websocket, in UNIX Epoch seconds. 0 for no expiration
 }
 
+/// A struct holding the scores for all scores, json compatible
+///
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct WebAllScores {
+    pub scores: HashMap<String, HashMap<String, Score>>, // a map holding all the scores, json key compatible
+}
+
+// Implement from<AllScores> for WebAllScores
+impl From<AllScores> for WebAllScores {
+    fn from(mut all_scores: AllScores) -> Self {
+        // Create a new hashmap
+        let mut web_all_scores = HashMap::default();
+
+        // Iterate through each game
+        for (game_id, mut game) in all_scores.scores.drain() {
+            // Create a new game
+            let mut web_game = HashMap::default();
+
+            // Iterate through each puzzle
+            for (puzzle_id, score) in game.drain() {
+                web_game.insert(puzzle_id.id().to_string(), score);
+            }
+
+            // Add the web game to the map
+            web_all_scores.insert(game_id.id(), web_game);
+        }
+
+        // Return the completed web all scores
+        WebAllScores {
+            scores: web_all_scores,
+        }
+    }
+}
+
 // Implement from<AllScores> for Message for websocket messages
 impl From<AllScores> for Result<Message, warp::Error> {
     fn from(all_scores: AllScores) -> Self {
+        // Convert the All Scores to a Web All Scores
+        let web_all_scores: WebAllScores = all_scores.into();
+
         // Try to serialize the update
-        match serde_json::to_string(&all_scores) {
+        match serde_json::to_string(&web_all_scores) {
             Ok(string) => Ok(Message::text(string)),
 
             // On failure, return an empty string (unable to convert the error)
@@ -172,7 +211,7 @@ pub enum ReplyData {
 
     /// A variant for replies with player scores
     #[serde(rename_all = "camelCase")]
-    Scores(AllScores),
+    Scores(WebAllScores),
 }
 
 // Implement key features of the web reply

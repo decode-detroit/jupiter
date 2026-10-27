@@ -1,6 +1,6 @@
 [package]
 name = "jupiter"
-version = "0.1.0"
+version = "0.1.1"
 authors = ["Patton Doyle <patton@DecodeDetroit.com>"]
 description = "Player and Puzzle Management Software"
 license = "GPL-3.0-or-later"
